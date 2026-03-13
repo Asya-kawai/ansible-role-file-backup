@@ -4,8 +4,8 @@
     update_cache: yes
   when: ansible_facts['os_family'] == 'Debian'
   tags:
-    - backup
-    - backup-update-packages
+    - dir-backup
+    - dir-backup-update-packages
     - webserver
     - appserver
     - dbserver
@@ -15,8 +15,8 @@
     update_cache: yes
   when: ansible_facts['os_family'] == 'RedHat'
   tags:
-    - backup
-    - backup-update-packages
+    - dir-backup
+    - dir-backup-update-packages
     - webserver
     - appserver
     - dbserver
@@ -26,8 +26,8 @@
     name: '*'
     state: latest
   tags:
-    - backup
-    - backup-update-packages
+    - dir-backup
+    - dir-backup-update-packages
     - webserver
     - appserver
     - dbserver
@@ -39,8 +39,8 @@
     state: latest
   when: ansible_facts['os_family'] == 'Debian'
   tags:
-    - backup
-    - backup-install-packages
+    - dir-backup
+    - dir-backup-install-packages
     - webserver
     - appserver
     - dbserver
@@ -52,8 +52,8 @@
     state: latest
   when: ansible_facts['os_family'] == 'RedHat'
   tags:
-    - backup
-    - backup-install-packages
+    - dir-backup
+    - dir-backup-install-packages
     - webserver
     - appserver
     - dbserver
@@ -66,8 +66,8 @@
     group: root
     mode: 0755
   tags:
-    - backup
-    - backup-create-backup-script-directory
+    - dir-backup
+    - dir-backup-create-backup-script-directory
     - webserver
     - appserver
     - dbserver
@@ -80,8 +80,8 @@
     group: root
     mode: 0755
   tags:
-    - backup
-    - backup-configure-script
+    - dir-backup
+    - dir-backup-configure-script
     - webserver
     - appserver
     - dbserver
@@ -92,8 +92,8 @@
     dest: "{{ dir_backup_dest }}"
     version: "{{ dir_backup_version }}"
   tags:
-    - backup
-    - backup-download-dir-backup-script
+    - dir-backup
+    - dir-backup-download-dir-backup-script
     - webserver
     - appserver
     - dbserver
@@ -103,8 +103,8 @@
     path: "{{ dir_backup_dest.rstrip('/') }}/{{ dir_backup_name }}"
   register: dir_backup
   tags:
-    - backup
-    - backup-check-dir-backup-script-exists
+    - dir-backup
+    - dir-backup-check-dir-backup-script-exists
     - webserver
     - appserver
     - dbserver
@@ -119,8 +119,8 @@
     mode: 0755
   when: dir_backup.stat.exists
   tags:
-    - backup
-    - backup-copy-dir-backup-script
+    - dir-backup
+    - dir-backup-copy-dir-backup-script
     - webserver
     - appserver
     - dbserver
@@ -137,8 +137,8 @@
     - "{{ backup_service_path }}"
     - "{{ backup_timer_path }}"
   tags:
-    - backup
-    - backup-create-backup-services
+    - dir-backup
+    - dir-backup-create-backup-services
     - webserver
     - appserver
     - dbserver
@@ -148,8 +148,8 @@
     path: "{{ backup_timer_path }}"
   register: backup_timer_path_result
   tags:
-    - backup
-    - backup-check-backup-timer
+    - dir-backup
+    - dir-backup-check-backup-timer
     - webserver
     - appserver
     - dbserver
@@ -162,8 +162,8 @@
     daemon-reload: true
   when: backup_timer_path_result.stat.exists
   tags:
-    - backup
-    - backup-enable-backup-timer
+    - dir-backup
+    - dir-backup-enable-backup-timer
     - webserver
     - appserver
     - dbserver
