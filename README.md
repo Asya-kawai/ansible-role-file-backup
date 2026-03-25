@@ -1,6 +1,6 @@
 # Ansible Role For Backup web server settings
 
-[![CI](https://github.com/Asya-kawai/ansible-role-backup/actions/workflows/ci.yml/badge.svg)](https://github.com/Asya-kawai/ansible-role-backup/actions/workflows?query=workflow%3ACI)
+[![CI](https://github.com/Asya-kawai/ansible-role-backup/actions/workflows/ci.yml/badge.svg)](https://github.com/Asya-kawai/ansible-role-file-backup/actions/workflows?query=workflow%3ACI)
 
 ## 概要
 
