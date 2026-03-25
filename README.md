@@ -62,6 +62,31 @@ file_backup_journallog_backup_on_calendar: '*-*-* 00:30:00'
 
 ## 実行例
 
+## 一連の確認作業コマンド例
+
+このロールの動作確認やデバッグのために、以下の手順で一連のコマンドを実行できます。
+
+```
+# バックアップサーバコンテナに入る
+podman exec -it backup-server bash
+
+# バックアップ先ディレクトリの作成（初回のみ）
+mkdir /backup
+# 所有者・グループの変更（ユーザー・グループはplaybookのvarsに合わせてください）
+chown -R backup-for-dest:backup-for-dest /backup
+
+# ノードコンテナに入る
+podman exec -it ubuntu-1 bash
+# S3バケットの作成（初回のみ）
+aws s3 mb s3://my-backup-bucket
+
+# systemdサービスの手動起動（バックアップ・転送処理のテスト）
+systemctl start authlog_backup.service
+systemctl start logs_transfer@authlog.service
+```
+
+これにより、スクリプトの動作やエラー出力（journalctl -e で確認可能）を手動で検証できます。
+
 Dry Run
 
 ```
