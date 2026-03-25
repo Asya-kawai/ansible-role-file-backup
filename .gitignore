@@ -1,5 +1,5 @@
 # Ansible/role test artifacts
-playbook.yml
+playbook*.yml
 inventory*
 roles/
 *.tar.gz
@@ -17,3 +17,5 @@ __pycache__/
 # OS/Editor
 .DS_Store
 Thumbs.db
+id_backup_server
+id_backup_server.pub

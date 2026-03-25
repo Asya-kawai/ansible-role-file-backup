@@ -1,0 +1,37 @@
+[Unit]
+Description=Template service to transfer backup log files (instance: %I)
+
+[Service]
+Type=oneshot
+User={{ file_backup_user }}
+Group={{ file_backup_group }}
+
+# Notes:
+#   This is a template unit (logs_transfer@.service).
+#   It is intentionally defined WITHOUT arguments in ExecStart.
+#
+#   - The instance name (%I) does NOT represent a filesystem path.
+#     It is only a symbolic identifier (e.g. "auditlog", "authlog",
+#     "dmesg", or "journal") selected by each timer.
+#
+#   - The actual log file pattern to transfer (e.g. "/var/log/audit.*.gz")
+#     is provided via a drop-in override file:
+#
+#       /etc/systemd/system/logs_transfer@<instance>.service.d/override.conf
+#
+#     This override replaces ExecStart and injects the real argument.
+#
+#   Why Unit names look like:
+#       logs_transfer@auditlog.service
+#     and the drop-in directory is:
+#       logs_transfer@auditlog.service.d/
+#
+#   Summary:
+#     - This template does not take arguments directly.
+#     - Timers select an instance name (%I).
+#     - Drop-in override files inject the actual log path pattern.
+
+ExecStart=/usr/bin/sudo /root/scripts/transfer_logs.sh ""
+
+[Install]
+WantedBy=multi-user.target

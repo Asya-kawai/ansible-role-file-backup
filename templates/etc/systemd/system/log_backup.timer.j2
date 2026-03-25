@@ -1,0 +1,9 @@
+[Unit]
+Description=The timer of backup service for {{ item.name }}
+Requires={{ item.backup_service_name }}
+
+[Timer]
+OnCalendar={{ item.backup_on_calendar }}
+
+[Install]
+WantedBy=timers.target

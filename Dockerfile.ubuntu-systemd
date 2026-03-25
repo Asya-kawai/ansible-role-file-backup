@@ -1,3 +1,3 @@
 FROM ubuntu:24.04
-RUN apt-get update -y && apt-get install systemd systemd-sysv sudo -y
+RUN apt-get update -y && apt-get install systemd systemd-sysv openssh-server rsync sudo -y
 CMD ["/lib/systemd/systemd"]

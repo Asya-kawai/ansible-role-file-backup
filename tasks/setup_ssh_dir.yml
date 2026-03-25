@@ -1,0 +1,62 @@
+---
+- name: Create a ssh directory in root directory
+  ansible.builtin.file:
+    path: "/root/.ssh"
+    state: directory
+    owner: "{{ file_backup_user }}"
+    group: "{{ file_backup_group }}"
+    mode: "0700"
+  when:
+    - file_backup_log_transfer_enable
+    - file_backup_user == 'root'
+  tags:
+    - file-backup
+    - file-backup-setup-ssh-for-log-transfer
+    - file-backup-create-ssh-directory
+
+- name: Create a ssh directory in non root home directory
+  ansible.builtin.file:
+    path: "/home/{{ file_backup_user }}/.ssh"
+    state: directory
+    owner: "{{ file_backup_user }}"
+    group: "{{ file_backup_group }}"
+    mode: "0700"
+  when:
+    - file_backup_log_transfer_enable
+    - not file_backup_user == 'root'
+  tags:
+    - file-backup
+    - file-backup-setup-ssh-for-log-transfer
+    - file-backup-create-ssh-directory
+
+- name: Configure ssh key in root directory
+  ansible.builtin.template:
+    src: "{{ file_backup_ssh_key_file.lstrip('/') }}.j2"
+    dest: "/root/{{ file_backup_ssh_key_file.lstrip('/') }}"
+    owner: "{{ file_backup_user }}"
+    group: "{{ file_backup_group }}"
+    mode: "0600"
+  when:
+    - file_backup_log_transfer_enable
+    - file_backup_user == 'root'
+    - file_backup_log_transfer_ssh_key | length > 0
+  tags:
+    - file-backup
+    - file-backup-setup-ssh-for-log-transfer
+    - file-backup-configure-ssh-key
+
+- name: Configure ssh key in non root home directory
+  ansible.builtin.template:
+    src: "{{ file_backup_ssh_key_file.lstrip('/') }}.j2"
+    dest: "/home/{{ file_backup_user }}/{{ file_backup_ssh_key_file.lstrip('/') }}"
+    owner: "{{ file_backup_user }}"
+    group: "{{ file_backup_group }}"
+    mode: "0600"
+  when:
+    - file_backup_log_transfer_enable
+    - not file_backup_user == 'root'
+    - file_backup_log_transfer_ssh_key | length > 0
+  tags:
+    - file-backup
+    - file-backup-setup-ssh-for-log-transfer
+    - file-backup-configure-ssh-key

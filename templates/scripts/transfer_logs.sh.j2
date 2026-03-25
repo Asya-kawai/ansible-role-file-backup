@@ -1,0 +1,115 @@
+#!/bin/bash
+
+# Transfer local log files to backup servers
+# and delete old files on backup servers.
+# It is triggered by systemd.timer.
+#
+# This script accepts one argument:
+#   - Directory, file, or wildcard (e.g. /var/log/dmesg/*.gz)
+#   - If directory is specified, all files in the directory are processed
+#   - If file or wildcard is specified, those files are processed
+
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <local_backup_directory_or_file>"
+    exit 1
+fi
+
+LOCAL_PATH="$1"
+if [ -d "$LOCAL_PATH" ]; then
+    LOCAL_FILES=("$LOCAL_PATH"/*)
+else
+    LOCAL_FILES=("$LOCAL_PATH")
+fi
+
+BACKUP_EXPIRE_DAYS={{ file_backup_expire_days }}
+BACKUP_SERVERS={{ file_backup_log_transfer_hosts }}
+BACKUP_DEST_DIR="{{ file_backup_log_transfer_dest_dir }}"
+REMOTE_USER={{ file_backup_log_transfer_ssh_user }}
+
+# --------------------------------------------------------------------
+# Helper Functions
+# --------------------------------------------------------------------
+
+function get_home_dir() {
+    case "$1" in
+        'root')
+            echo "/root"
+            ;;
+        *)
+            echo "/home/$1"
+            ;;
+    esac
+}
+
+# $1: directory path on backup servers
+function make_dst_dir() {
+    local DST_PATH="$1"
+    for DST_SERVER in $BACKUP_SERVERS; do
+        ssh -o StrictHostKeyChecking=no \
+            -i $(get_home_dir {{ file_backup_user }})/{{ file_backup_ssh_key_file.lstrip('/') }} \
+            ${REMOTE_USER}@${DST_SERVER} \
+            "mkdir -p $DST_PATH"
+    done
+}
+
+# Delete expired files on backup servers
+# $1: directory, $2: regexp pattern
+function delete_old_files() {
+    local DST_PATH="$1"
+    local REGEXP="$2"
+    for DST_SERVER in $BACKUP_SERVERS; do
+        ssh -o StrictHostKeyChecking=no \
+            -i $(get_home_dir {{ file_backup_user }})/{{ file_backup_ssh_key_file.lstrip('/') }} \
+            ${REMOTE_USER}@${DST_SERVER} \
+            "find $DST_PATH -name \"$REGEXP\" -ctime +$BACKUP_EXPIRE_DAYS -delete" \
+            && echo "Deleted old files on ${DST_SERVER}:${DST_PATH}"
+    done
+}
+
+# --------------------------------------------------------------------
+# Main Logic
+# --------------------------------------------------------------------
+
+function store_logs() {
+    # 1. Scan .gz files in LOCAL_DIR_OR_FILE
+    # 2. Check if file name contains date (YYYYMMDD)
+    # 3. Create backup destination directory
+    # 4. Transfer file to backup server
+    # 5. Delete old files on backup server
+    for LOCAL_FILE in ${LOCAL_FILES}; do
+
+        [ -e "$LOCAL_FILE" ] || continue   # NO FILE
+
+        BASENAME=$(basename "$LOCAL_FILE")
+        # Skip files that do not end with .YYYYMMDD.gz
+        if ! [[ "$BASENAME" =~ \.[0-9]{8}\.gz$ ]]; then
+            continue
+        fi
+
+        HOSTNAME=$(hostname)
+        BACKUP_DIR=${BACKUP_DEST_DIR}/${HOSTNAME}
+
+        # Create destination directory
+        make_dst_dir "$BACKUP_DIR"
+
+        # Transfer files with rsync
+        # --ignore-existing: skip if same file exists on backup server
+        for DST_SERVER in $BACKUP_SERVERS; do
+            rsync -av \
+                --ignore-existing \
+                -e "ssh -o StrictHostKeyChecking=no -i $(get_home_dir {{ file_backup_user }})/{{ file_backup_ssh_key_file.lstrip('/') }}" \
+                "$LOCAL_FILE" \
+                ${REMOTE_USER}@${DST_SERVER}:${BACKUP_DIR}/ \
+                && echo "Transferred $LOCAL_FILE to ${DST_SERVER}:${BACKUP_DIR}/"
+        done
+
+        # Delete old logs on backup server
+        ORIGINAL_FILE_PREFIX=$(echo "$BASENAME" | cut -d '.' -f 1)
+        delete_old_files "$BACKUP_DIR" "${ORIGINAL_FILE_PREFIX}.*"
+    done
+}
+
+store_logs
+exit 0

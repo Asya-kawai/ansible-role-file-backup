@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# Create a backup of audit log as .gz file,
+# and delete expired audit log files in local.
+# It is triggered by systemd.timer.
+
+set -euo pipefail
+
+BACKUP_EXPIRE_DAYS={{ file_backup_expire_days }}
+BACKUP_USER="{{ file_backup_user }}"
+BACKUP_GROUP="{{ file_backup_group }}"
+AUDIT_LOG_DIR="{{ file_backup_auditlog_dir }}"
+AUDIT_LOG_PATH="$AUDIT_LOG_DIR/audit.log"
+
+YESTERDAY=$(date +%Y%m%d -d '-1day')
+
+AUDIT_LOG_GZ="${AUDIT_LOG_PATH}.${YESTERDAY}.gz"
+
+# Create a backup of audit log file.
+function create_backup_file() {
+    if [ ! -f $AUDIT_LOG_PATH ]; then
+        echo "$AUDIT_LOG_PATH does not exist."
+		return 1
+	fi
+
+    {% if file_backup_dest_dir %}
+    if [ -f {{ file_backup_dest_dir.lstrip('/') }}/"$AUDIT_LOG_GZ" ]; then
+        echo "$AUDIT_LOG_GZ already exists. Skip."
+        return 0
+    fi
+    {% else %}
+    if [ -f $AUDIT_LOG_GZ ]; then
+        echo "$AUDIT_LOG_GZ already exists. Skip."
+        return 0
+	fi
+    {% endif %}
+
+    if [ ! -f /var/run/auditd.pid ]; then
+        echo "auditd is not started."
+        return 1
+    fi
+
+    # Log rotation.
+    kill -USR1 `cat /var/run/auditd.pid`
+
+    # Wait for rotation to complete
+    sleep 5
+    retries=0
+    max_retries=10
+    while [ ! -f ${AUDIT_LOG_PATH}.1 ] && [ $retries -lt $max_retries ]; do
+        echo "Waiting for ${AUDIT_LOG_PATH}.1... (attempt $((retries+1)))"
+        sleep 1
+        retries=$((retries+1))
+    done
+
+    if [ ! -f ${AUDIT_LOG_PATH}.1 ]; then
+        echo "rotation file(e.g. audit.log.1) does not exist. Possibly logrotate has not run yet."
+        return 1
+    fi
+
+    cp ${AUDIT_LOG_PATH}.1 ${AUDIT_LOG_PATH}.${YESTERDAY}
+    chown "$BACKUP_USER":"$BACKUP_GROUP" ${AUDIT_LOG_PATH}.${YESTERDAY}
+    gzip -f ${AUDIT_LOG_PATH}.${YESTERDAY}
+    {% if file_backup_dest_dir %}
+    mv "$AUDIT_LOG_GZ" {{ file_backup_dest_dir.lstrip('/') }}/"$AUDIT_LOG_GZ"
+    {% endif %}
+}
+
+# Delete old files whose expiration date exceeds $BACKUP_EXPIRE_DAYS on local.
+function delete_old_files() {
+    find "$AUDIT_LOG_DIR" -name 'audit.log.*' -ctime +$BACKUP_EXPIRE_DAYS -delete
+}
+
+create_backup_file
+delete_old_files
+
+exit 0

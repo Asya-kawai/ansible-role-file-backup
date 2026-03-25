@@ -1,0 +1,82 @@
+#!/bin/bash
+
+# Create a daily backup of dmesg output as .gz file.
+# It is triggered by systemd.timer.
+#
+# Logic:
+#   - Run once per day.
+#   - Dump full dmesg (with human timestamp) → dmesg.YYYYMMDD.log
+#   - Skip if file already exists (idempotent)
+#   - gzip compress
+#   - Delete files older than BACKUP_EXPIRE_DAYS
+
+set -euo pipefail
+
+BACKUP_EXPIRE_DAYS={{ file_backup_expire_days }}
+BACKUP_USER="{{ file_backup_user }}"
+BACKUP_GROUP="{{ file_backup_group }}"
+BACKUP_DIR="{{ file_backup_dmesg_dir }}"
+
+YESTERDAY=$(date +%Y%m%d -d '-1day')
+
+function create_dmesg_backup() {
+    OUTPUT_FILE="${BACKUP_DIR}/dmesg.${YESTERDAY}"
+    OUTPUT_GZ="${OUTPUT_FILE}.gz"
+
+    # Idempotency: if yesterday's file already exists, do nothing
+    {% if file_backup_dest_dir %}
+    if [ -f {{ file_backup_dest_dir.lstrip('/') }}/"$OUTPUT_GZ" ]; then
+        echo "$OUTPUT_GZ already exists. Skip."
+        return 0
+    fi
+    {% else %}
+    if [ -f "$OUTPUT_GZ" ]; then
+      echo "$OUTPUT_GZ already exists. Skip."
+      return 0
+    fi
+    {% endif %}
+
+    echo "Generating $OUTPUT_FILE ..."
+
+    # Dump human-readable dmesg (absolute timestamps)
+    #
+    # Note:
+    # We use "dmesg --ctime" to capture the entire kernel ring buffer once per day.
+    #
+    # Reason:
+    #   - The kernel ring buffer does not store real wall-clock timestamps.
+    #     It only keeps monotonic timestamps (seconds since boot).
+    #   - Therefore, date-range filtering with "dmesg --since/--until" is
+    #     approximate and cannot reliably extract an exact daily slice.
+    #
+    # Overlap:
+    #   - Because the ring buffer is circular, daily dumps will naturally
+    #     include messages that also appeared in the previous day's dump.
+    #     This duplication is expected and unavoidable.
+    #
+    # Summary:
+    #   Full daily dumps provide the most reliable and reproducible backup
+    #   even though entries may overlap between days.
+    #
+    sudo dmesg --ctime > "$OUTPUT_FILE"
+
+    chown "$BACKUP_USER":"$BACKUP_GROUP" "$OUTPUT_FILE"
+    gzip -f "$OUTPUT_FILE"
+    {% if file_backup_dest_dir %}
+    mv "$OUTPUT_GZ" {{ file_backup_dest_dir.lstrip('/') }}/"$OUTPUT_GZ"
+    {% endif %}
+}
+
+
+# Delete expired files
+function delete_old_files() {
+    find "$BACKUP_DIR" \
+      -name 'dmesg.*' \
+      -ctime +$BACKUP_EXPIRE_DAYS \
+      -delete
+}
+
+create_dmesg_backup
+delete_old_files
+
+exit 0

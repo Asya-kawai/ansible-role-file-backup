@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# Transfer local backup files to S3 (Object Storage).
+# It is triggered by systemd.timer.
+#
+# This script accepts one argument:
+#   - Directory, file, or wildcard (e.g. /var/log/dmesg/*.gz)
+#   - If directory is specified, all files in the directory are processed
+#   - If file or wildcard is specified, those files are processed
+
+set -euo pipefail
+
+# AWS CLI settings for compatibility with Sakura Object Storage.
+# https://cloud.sakura.ad.jp/news/2025/02/04/objectstorage_defectversion/
+export AWS_REQUEST_CHECKSUM_CALCULATION=WHEN_REQUIRED
+export AWS_RESPONSE_CHECKSUM_VALIDATION=WHEN_REQUIRED
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <source_directory_or_file>"
+    exit 1
+fi
+
+SOURCE_PATH="$1"
+if [ -d "$SOURCE_PATH" ]; then
+    LOCAL_FILES=("$SOURCE_PATH"/*)
+else
+    LOCAL_FILES=("$SOURCE_PATH")
+fi
+
+BACKUP_TO="s3://{{ file_backup_s3_transfer_bucket.rstrip('/') }}/{{ inventory_hostname }}"
+BACKUP_EXPIRE_DAYS={{ file_backup_expire_days }}
+YESTERDAY=$(date +%Y%m%d -d '-1day')
+
+function store_to_s3() {
+
+    # 1. Scan .gz files in LOCAL_DIR_OR_FILE
+    # 2. Check if file name contains date (YYYYMMDD)
+    # 3. Create backup destination directory (S3 path)
+    # 4. Transfer file to S3
+    # 5. Delete old files on S3 (if needed)
+    for LOCAL_FILE in ${LOCAL_FILES[@]}; do
+
+        [ -e "$LOCAL_FILE" ] || continue   # NO FILE
+
+        BASENAME=$(basename "$LOCAL_FILE")
+        # Skip files that do not end with .YYYYMMDD.gz
+        if ! [[ "$BASENAME" =~ \.[0-9]{8}\.gz$ ]]; then
+            continue
+        fi
+        # Skip files that do not contain yesterday's date
+        if [[ "$BASENAME" != *"$YESTERDAY"* ]]; then
+            echo "$LOCAL_FILE does not match yesterday ($YESTERDAY). Skip."
+            continue
+        fi
+
+        aws s3 cp \
+            "$LOCAL_FILE" \
+            ${BACKUP_TO}/"$BASENAME" && echo "Transferred $LOCAL_FILE to S3"
+    done
+}
+
+store_to_s3
+exit 0

@@ -1,0 +1,185 @@
+---
+- name: Create a override configuration directory for log transfer service
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  with_items:
+    - "{{ file_backup_log_transfer_auditlog_override_dir }}"
+    - "{{ file_backup_log_transfer_authlog_override_dir }}"
+    - "{{ file_backup_log_transfer_dmesg_override_dir }}"
+    - "{{ file_backup_log_transfer_journallog_override_dir }}"
+  when:
+    - file_backup_log_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+- name: Install the override configuration for log transfer service
+  ansible.builtin.template:
+    src: "{{ file_backup_service_dir.lstrip('/') }}/logs_transfer@.service.d/override.conf.j2"
+    dest: "{{ item.override_conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  with_items:
+    - name: auditlog
+      override_conf_path: "{{ file_backup_log_transfer_auditlog_override_path }}"
+      download_dir: "{{ file_backup_log_transfer_auditlog_override_path }}"
+      source_path: "{{ file_backup_auditlog_dir.rstrip('/') }}/audit.log.*.gz"
+    - name: authlog
+      override_conf_path: "{{ file_backup_log_transfer_authlog_override_path }}"
+      download_dir: "{{ file_backup_log_transfer_authlog_override_path }}"
+      source_path: "{{ file_backup_authlog_dir.rstrip('/') }}/auth.log.*.gz"
+    - name: dmesg
+      override_conf_path: "{{ file_backup_log_transfer_dmesg_override_path }}"
+      download_dir: "{{ file_backup_log_transfer_dmesg_override_path }}"
+      source_path: "{{ file_backup_dmesg_dir.rstrip('/') }}/dmesg.*.gz"
+    - name: journallog
+      override_conf_path: "{{ file_backup_log_transfer_journallog_override_path }}"
+      download_dir: "{{ file_backup_log_transfer_journallog_override_path }}"
+      source_path: "{{ file_backup_journallog_dir.rstrip('/') }}/*/system.journal.*.gz"
+  when:
+    - file_backup_log_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+- name: Setup a system for basically periodic logs transfer to backup servers
+  ansible.builtin.template:
+    src: "{{ item.lstrip('/') }}.j2"
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  with_items:
+    - "{{ file_backup_log_transfer_service_path }}"
+  when:
+    - file_backup_log_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+- name: Setup a timer for periodic logs transfer to backup servers
+  ansible.builtin.template:
+    src: "{{ file_backup_timer_dir.lstrip('/') }}/logs_transfer.timer.j2"
+    dest: "{{ item.transfer_timer_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  with_items:
+    - name: auditlog
+      transfer_timer_path: "{{ file_backup_log_transfer_auditlog_timer_path }}"
+      transfer_service_name: "{{ file_backup_log_transfer_auditlog_unit }}"
+      transfer_on_calendar: "{{ file_backup_auditlog_backup_on_calendar }}"
+    - name: authlog
+      transfer_timer_path: "{{ file_backup_log_transfer_authlog_timer_path }}"
+      transfer_service_name: "{{ file_backup_log_transfer_authlog_unit }}"
+      transfer_on_calendar: "{{ file_backup_authlog_backup_on_calendar }}"
+    - name: dmesg
+      transfer_timer_path: "{{ file_backup_log_transfer_dmesg_timer_path }}"
+      transfer_service_name: "{{ file_backup_log_transfer_dmesg_unit }}"
+      transfer_on_calendar: "{{ file_backup_dmesg_backup_on_calendar }}"
+    - name: journallog
+      transfer_timer_path: "{{ file_backup_log_transfer_journallog_timer_path }}"
+      transfer_service_name: "{{ file_backup_log_transfer_journallog_unit }}"
+      transfer_on_calendar: "{{ file_backup_journallog_backup_on_calendar }}"
+  when:
+    - file_backup_log_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+- name: Check the log transfer for auditlog timer existence for periodic logs transfer to backup servers
+  ansible.builtin.stat:
+    path: "{{ file_backup_log_transfer_auditlog_timer_path }}"
+  register: file_backup_log_transfer_auditlog_timer_path_result
+  when:
+    - file_backup_log_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+- name: Enable the log transfer auditlog timer for periodic logs transfer to backup servers
+  ansible.builtin.systemd:
+    name: "{{ file_backup_log_transfer_auditlog_timer_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  when:
+    - file_backup_log_transfer_enable
+    - file_backup_log_transfer_auditlog_timer_path_result.stat.exists
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+- name: Check the log transfer for authlog timer existence for periodic logs transfer to backup servers
+  ansible.builtin.stat:
+    path: "{{ file_backup_log_transfer_authlog_timer_path }}"
+  register: file_backup_log_transfer_authlog_timer_path_result
+  when:
+    - file_backup_log_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+- name: Enable the log transfer authlog timer for periodic logs transfer to backup servers
+  ansible.builtin.systemd:
+    name: "{{ file_backup_log_transfer_authlog_timer_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  when:
+    - file_backup_log_transfer_enable
+    - file_backup_log_transfer_authlog_timer_path_result.stat.exists
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+- name: Check the log transfer for dmesg timer existence for periodic logs transfer to backup servers
+  ansible.builtin.stat:
+    path: "{{ file_backup_log_transfer_dmesg_timer_path }}"
+  register: file_backup_log_transfer_dmesg_timer_path_result
+  when:
+    - file_backup_log_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+- name: Enable the log transfer dmesg timer for periodic logs transfer to backup servers
+  ansible.builtin.systemd:
+    name: "{{ file_backup_log_transfer_dmesg_timer_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  when:
+    - file_backup_log_transfer_enable
+    - file_backup_log_transfer_dmesg_timer_path_result.stat.exists
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+- name: Check the log transfer for journallog timer existence for periodic logs transfer to backup servers
+  ansible.builtin.stat:
+    path: "{{ file_backup_log_transfer_journallog_timer_path }}"
+  register: file_backup_log_transfer_journallog_timer_path_result
+  when:
+    - file_backup_log_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+- name: Enable the log transfer journallog timer for periodic logs transfer to backup servers
+  ansible.builtin.systemd:
+    name: "{{ file_backup_log_transfer_journallog_timer_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  when:
+    - file_backup_log_transfer_enable
+    - file_backup_log_transfer_journallog_timer_path_result.stat.exists
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service

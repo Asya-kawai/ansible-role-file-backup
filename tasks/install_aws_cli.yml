@@ -1,0 +1,66 @@
+---
+- name: Download AWS cli
+  ansible.builtin.get_url:
+    url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+    dest: /usr/local/src/awscli-exe-linux-x86_64.zip
+    owner: root
+    group: root
+    mode: "0644"
+  when: file_backup_s3_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-aws-cli
+
+- name: Check AWS cli zip exists
+  ansible.builtin.stat:
+    path: /usr/local/src/awscli-exe-linux-x86_64.zip
+  register: awscli_zip_path
+  when: file_backup_s3_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-aws-cli
+
+- name: Unarchive AWS cli
+  ansible.builtin.unarchive:
+    remote_src: true
+    src: /usr/local/src/awscli-exe-linux-x86_64.zip
+    dest: /usr/local/src/
+  when:
+    - file_backup_s3_transfer_enable
+    - awscli_zip_path.stat.exists
+  tags:
+    - file-backup
+    - file-backup-install-aws-cli
+
+- name: Check AWS cli exists
+  ansible.builtin.stat:
+    path: "{{ awscli_install_path }}"
+  register: awscli_path
+  when: file_backup_s3_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-aws-cli
+
+- name: Install AWS cli
+  ansible.builtin.command:
+    chdir: /usr/local/src/
+    cmd: ./aws/install
+  when:
+    - file_backup_s3_transfer_enable
+    - not awscli_path.stat.exists
+  changed_when: false
+  tags:
+    - file-backup
+    - file-backup-install-aws-cli
+
+- name: Update AWS cli
+  ansible.builtin.command:
+    chdir: /usr/local/src/
+    cmd: ./aws/install --update
+  when:
+    - file_backup_s3_transfer_enable
+    - awscli_path.stat.exists
+  changed_when: false
+  tags:
+    - file-backup
+    - file-backup-install-aws-cli

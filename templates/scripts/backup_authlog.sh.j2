@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# Create a backup of auth.log as .gz file,
+# and delete expired backup files in local.
+# It is triggered by systemd.timer.
+#
+# Notes:
+#   - Unlike auditd, auth.log rotation is handled by logrotate.
+#   - auth.log.<n> files may already exist depending on the rotation timing.
+#   - This script copies auth.log.<1> as "auth.log.YYYYMMDD" and compresses it.
+
+set -euo pipefail
+
+BACKUP_EXPIRE_DAYS={{ file_backup_expire_days }}
+BACKUP_USER="{{ file_backup_user }}"
+BACKUP_GROUP="{{ file_backup_group }}"
+
+AUTH_LOG_DIR="{{ file_backup_authlog_dir }}"
+AUTH_LOG_PATH="${AUTH_LOG_DIR}/auth.log"
+YESTERDAY=$(date +%Y%m%d -d '-1day')
+
+AUTH_LOG_ROTATED="${AUTH_LOG_PATH}.1"
+AUTH_LOG_GZ="${AUTH_LOG_PATH}.${YESTERDAY}.gz"
+
+function create_backup_file() {
+    # Check existence of raw auth.log
+    if [ ! -f "$AUTH_LOG_PATH" ]; then
+        echo "$AUTH_LOG_PATH does not exist."
+        return 1
+    fi
+
+    # Idempotency: skip if backup for yesterday already exists
+    {% if file_backup_dest_dir %}
+    if [ -f {{ file_backup_dest_dir.lstrip('/') }}/"$AUTH_LOG_GZ" ]; then
+        echo "$AUTH_LOG_GZ already exists. Skip."
+        return 0
+    fi
+    {% else %}
+    if [ -f "$AUTH_LOG_GZ" ]; then
+        echo "$AUTH_LOG_GZ already exists. Skip."
+        return 0
+    fi
+    {% endif %}
+
+    # Ensure rotated file exists (logrotate should have created it)
+    if [ ! -f "$AUTH_LOG_ROTATED" ]; then
+        echo "$AUTH_LOG_ROTATED does not exist. Possibly logrotate has not run yet."
+        return 1
+    fi
+
+    # Copy rotated file as yesterday’s backup
+    cp "$AUTH_LOG_ROTATED" "${AUTH_LOG_PATH}.${YESTERDAY}"
+    chown "$BACKUP_USER":"$BACKUP_GROUP" "${AUTH_LOG_PATH}.${YESTERDAY}"
+
+    # Compress
+    gzip -f "${AUTH_LOG_PATH}.${YESTERDAY}"
+    {% if file_backup_dest_dir %}
+    mv "$AUTH_LOG_GZ" {{ file_backup_dest_dir.lstrip('/') }}/"$AUTH_LOG_GZ"
+    {% endif %}
+}
+
+# Delete expired files locally
+function delete_old_files() {
+    find "$AUTH_LOG_DIR" -name 'auth.log.*' -ctime +$BACKUP_EXPIRE_DAYS -delete
+}
+
+create_backup_file
+delete_old_files
+
+exit 0

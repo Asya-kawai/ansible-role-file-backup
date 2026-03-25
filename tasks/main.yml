@@ -4,166 +4,145 @@
     update_cache: yes
   when: ansible_facts['os_family'] == 'Debian'
   tags:
-    - dir-backup
-    - dir-backup-update-packages
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-update-packages
 
 - name: Update OS package caches for CentOS
   dnf:
     update_cache: yes
   when: ansible_facts['os_family'] == 'RedHat'
   tags:
-    - dir-backup
-    - dir-backup-update-packages
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-update-packages
 
 - name: Update OS packages
   package:
     name: '*'
     state: latest
   tags:
-    - dir-backup
-    - dir-backup-update-packages
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-update-packages
 
 # For Ubuntu
-- name: Install OS packages for Debain
+- name: Install OS packages for Debian
   package:
-    name: "{{ dir_backup_debian_install }}"
+    name: "{{ file_backup_debian_install }}"
     state: latest
   when: ansible_facts['os_family'] == 'Debian'
   tags:
-    - dir-backup
-    - dir-backup-install-packages
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-install-packages
 
 # For CentOS
 - name: Install OS packages for CentOS
   package:
-    name: "{{ dir_backup_redhat_install }}"
+    name: "{{ file_backup_redhat_install }}"
     state: latest
   when: ansible_facts['os_family'] == 'RedHat'
   tags:
-    - dir-backup
-    - dir-backup-install-packages
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-install-packages
 
-- name: Create target directories backup script directory
-  file:
-    path: "{{ dir_backup_bin_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: 0755
+# ------------------------------------------
+# Install AWS cli if log backup to S3 is enabled.
+# ------------------------------------------
+- name: Install AWS cli if log backup to S3 is enabled
+  ansible.builtin.include_tasks: install_aws_cli.yml
+  when: file_backup_s3_transfer_enable
   tags:
-    - dir-backup
-    - dir-backup-create-backup-script-directory
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-install-aws-cli
 
-- name: Configure a target directories backup script
-  template:
-    src: "{{ dir_backup_script_path.lstrip('/') }}.j2"
-    dest: "{{ dir_backup_script_path }}"
-    owner: root
-    group: root
-    mode: 0755
+# -----------------------------------------
+# Create backup group and user
+# -----------------------------------------
+- name: Create an backup group and user
+  ansible.builtin.include_tasks: create_backup_user.yml
   tags:
-    - dir-backup
-    - dir-backup-configure-script
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-create-backup-user
 
-- name: Download a core dir backup script from github
-  git:
-    repo: "{{ dir_backup_core_script_repo }}"
-    dest: "{{ dir_backup_core_script_download_dir }}"
-    version: "{{ dir_backup_core_script_version }}"
+# -----------------------------------------
+# Log backup in local
+# -----------------------------------------
+# Install backup scripts
+- name: Install backup scripts
+  ansible.builtin.include_tasks: install_file_backup_scripts.yml
   tags:
-    - dir-backup
-    - dir-backup-download-core-dir-backup-script
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-install-backup-scripts
 
-- name: Check the core dir backup script exists
-  stat:
-    path: "{{ dir_backup_core_script_download_dir.rstrip('/') }}/{{ dir_backup_core_script_name }}"
-  register: dir_backup
+- name: Setup backup service and timer
+  ansible.builtin.include_tasks: install_file_backup_service.yml
   tags:
-    - dir-backup
-    - dir-backup-check-core-dir-backup-script-exists
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-install-backup-service
 
-- name: Copy a core dir backup script
-  copy:
-    remote_src: yes
-    src: "{{ dir_backup_core_script_download_dir.rstrip('/') }}/{{ dir_backup_core_script_name }}"
-    dest: "{{ dir_backup_core_script_install_dir.rstrip('/') }}/{{ dir_backup_core_script_name }}"
-    owner: root
-    group: root
-    mode: 0755
-  when: dir_backup.stat.exists
+# -----------------------------------------
+# Log backup transfer to s3
+# -----------------------------------------
+# Install s3 transfer scripts
+- name: Install s3 transfer scripts
+  ansible.builtin.include_tasks: install_s3_transfer_scripts.yml
+  when: file_backup_s3_transfer_enable
   tags:
-    - dir-backup
-    - dir-backup-copy-core-dir-backup-script
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-install-s3-transfer-scripts
 
-# Reference: https://opensource.com/article/20/7/systemd-timers
-- name: Create backup services
-  template:
-    src: "{{ item.lstrip('/') }}.j2"
-    dest: "{{ item }}"
-    owner: root
-    group: root
-    mode: 0644
-  with_items:
-    - "{{ dir_backup_service_path }}"
-    - "{{ dir_backup_timer_path }}"
+- name: Install s3 download scripts
+  ansible.builtin.include_tasks: install_s3_download_scripts.yml
+  when: file_backup_s3_transfer_enable
   tags:
-    - dir-backup
-    - dir-backup-create-backup-services
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-install-s3-download-scripts
 
-- name: Check backup timer exists
-  stat:
-    path: "{{ dir_backup_timer_path }}"
-  register: dir_backup_timer_path_result
+# Setup ssh for s3 transfer user to backup servers
+- name: Setup ssh for s3 transfer user to backup servers
+  ansible.builtin.include_tasks: setup_ssh_dir.yml
+  when: file_backup_s3_transfer_enable
   tags:
-    - dir-backup
-    - dir-backup-check-backup-timer
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-setup-ssh-for-s3-transfer
 
-- name: Enable backup timer
-  systemd:
-    name: "{{ dir_backup_timer_name }}"
-    state: started
-    enabled: true
-    daemon-reload: true
-  when: dir_backup_timer_path_result.stat.exists
+- name: Create and setup AWS credentials
+  ansible.builtin.include_tasks: setup_aws_credentials.yml
+  when: file_backup_s3_transfer_enable
   tags:
-    - dir-backup
-    - dir-backup-enable-backup-timer
-    - webserver
-    - appserver
-    - dbserver
+    - file-backup
+    - file-backup-to-s3
+    - file-backup-create-aws-credentials
+
+- name: Setup AWS config
+  ansible.builtin.include_tasks: setup_aws_config.yml
+  when: file_backup_s3_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-to-s3
+    - file-backup-create-aws-config
+
+# -----------------------------------------
+# Log transfer to backup servers
+# -----------------------------------------
+# Setup ssh for log transfer user to backup servers
+- name: Setup ssh for log transfer user to backup servers
+  ansible.builtin.include_tasks: setup_ssh_dir.yml
+  when: file_backup_log_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-setup-ssh-for-log-transfer
+
+# Install log transfer scripts
+- name: Install log transfer scripts
+  ansible.builtin.include_tasks: install_log_transfer_scripts.yml
+  when: file_backup_log_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-scripts
+
+# Setup log transfer service and timer
+- name: Setup log transfer service and timer
+  ansible.builtin.include_tasks: install_log_transfer_service.yml
+  when: file_backup_log_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service

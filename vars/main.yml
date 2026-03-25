@@ -1,17 +1,70 @@
 ---
-dir_backup_script_name: dir_backup.sh
-dir_backup_script_path: "{{ dir_backup_bin_dir.rstrip('/') }}/{{ dir_backup_script_name }}"
+file_backup_service_dir: /etc/systemd/system
+file_backup_timer_dir: /etc/systemd/system
 
-dir_backup_core_script_download_dir: /usr/local/src/dir-backup
-dir_backup_core_script_install_dir: /opt/bin
-dir_backup_core_script_name: _dir_backup.sh
+file_backup_auditlog_dir: /var/log/audit
+file_backup_authlog_dir: /var/log
+file_backup_dmesg_dir: /var/log
+file_backup_journallog_dir: /var/log/journal
 
-dir_backup_service_dir: /etc/systemd/system
-dir_backup_service_name: dir_backup.service
-dir_backup_timer_dir: /etc/systemd/system
-dir_backup_timer_name: dir_backup.timer
+file_backup_auditlog_backup_service_name: auditlog_backup.service
+file_backup_auditlog_backup_timer_name: auditlog_backup.timer
+file_backup_auditlog_backup_service_path: "{{ file_backup_service_dir.rstrip('/') }}/{{ file_backup_auditlog_backup_service_name }}"
+file_backup_auditlog_backup_timer_path: "{{ file_backup_timer_dir.rstrip('/') }}/{{ file_backup_auditlog_backup_timer_name }}"
+file_backup_auditlog_backup_script_name: backup_auditlog.sh
 
-dir_backup_service_path: "{{ dir_backup_service_dir.rstrip('/') }}/{{ dir_backup_service_name }}"
-dir_backup_timer_path: "{{ dir_backup_timer_dir.rstrip('/') }}/{{ dir_backup_timer_name }}"
+file_backup_authlog_backup_service_name: authlog_backup.service
+file_backup_authlog_backup_timer_name: authlog_backup.timer
+file_backup_authlog_backup_service_path: "{{ file_backup_service_dir.rstrip('/') }}/{{ file_backup_authlog_backup_service_name }}"
+file_backup_authlog_backup_timer_path: "{{ file_backup_timer_dir.rstrip('/') }}/{{ file_backup_authlog_backup_timer_name }}"
+file_backup_authlog_backup_script_name: backup_authlog.sh
 
-dir_backup_path: "{{ dir_backup_dir.rstrip('/') }}/{{ dir_backup_name }}"
+file_backup_dmesg_backup_service_name: dmesg_backup.service
+file_backup_dmesg_backup_timer_name: dmesg_backup.timer
+file_backup_dmesg_backup_service_path: "{{ file_backup_service_dir.rstrip('/') }}/{{ file_backup_dmesg_backup_service_name }}"
+file_backup_dmesg_backup_timer_path: "{{ file_backup_timer_dir.rstrip('/') }}/{{ file_backup_dmesg_backup_timer_name }}"
+file_backup_dmesg_backup_script_name: backup_dmesg.sh
+
+file_backup_journallog_backup_service_name: journallog_backup.service
+file_backup_journallog_backup_timer_name: journallog_backup.timer
+file_backup_journallog_backup_service_path: "{{ file_backup_service_dir.rstrip('/') }}/{{ file_backup_journallog_backup_service_name }}"
+file_backup_journallog_backup_timer_path: "{{ file_backup_timer_dir.rstrip('/') }}/{{ file_backup_journallog_backup_timer_name }}"
+file_backup_journallog_backup_script_name: backup_journallog.sh
+
+file_backup_log_transfer_service_dir: /etc/systemd/system
+file_backup_log_transfer_timer_dir: /etc/systemd/system
+
+file_backup_log_transfer_service_name: logs_transfer@.service
+file_backup_log_transfer_service_path: "{{ file_backup_log_transfer_service_dir.rstrip('/') }}/{{ file_backup_log_transfer_service_name }}"
+
+file_backup_log_transfer_auditlog_timer_name: logs_transfer_auditlog.timer
+file_backup_log_transfer_auditlog_timer_path: "{{ file_backup_log_transfer_timer_dir.rstrip('/') }}/{{ file_backup_log_transfer_auditlog_timer_name }}"
+file_backup_log_transfer_auditlog_unit: logs_transfer@auditlog.service
+file_backup_log_transfer_auditlog_override_dir: "{{ file_backup_log_transfer_timer_dir.rstrip('/') }}/{{ file_backup_log_transfer_auditlog_unit }}.d"
+file_backup_log_transfer_auditlog_override_path: "{{ file_backup_log_transfer_auditlog_override_dir }}/override.conf"
+
+file_backup_log_transfer_authlog_timer_name: logs_transfer_authlog.timer
+file_backup_log_transfer_authlog_timer_path: "{{ file_backup_log_transfer_timer_dir.rstrip('/') }}/{{ file_backup_log_transfer_authlog_timer_name }}"
+file_backup_log_transfer_authlog_unit: logs_transfer@authlog.service
+file_backup_log_transfer_authlog_override_dir: "{{ file_backup_log_transfer_timer_dir.rstrip('/') }}/{{ file_backup_log_transfer_authlog_unit }}.d"
+file_backup_log_transfer_authlog_override_path: "{{ file_backup_log_transfer_authlog_override_dir }}/override.conf"
+
+file_backup_log_transfer_dmesg_timer_name: logs_transfer_dmesg.timer
+file_backup_log_transfer_dmesg_timer_path: "{{ file_backup_log_transfer_timer_dir.rstrip('/') }}/{{ file_backup_log_transfer_dmesg_timer_name }}"
+file_backup_log_transfer_dmesg_unit: logs_transfer@dmesg.service
+file_backup_log_transfer_dmesg_override_dir: "{{ file_backup_log_transfer_timer_dir.rstrip('/') }}/{{ file_backup_log_transfer_dmesg_unit }}.d"
+file_backup_log_transfer_dmesg_override_path: "{{ file_backup_log_transfer_dmesg_override_dir }}/override.conf"
+
+file_backup_log_transfer_journallog_timer_name: logs_transfer_journallog.timer
+file_backup_log_transfer_journallog_timer_path: "{{ file_backup_log_transfer_timer_dir.rstrip('/') }}/{{ file_backup_log_transfer_journallog_timer_name }}"
+file_backup_log_transfer_journallog_unit: logs_transfer@journallog.service
+file_backup_log_transfer_journallog_override_dir: "{{ file_backup_log_transfer_timer_dir.rstrip('/') }}/{{ file_backup_log_transfer_journallog_unit }}.d"
+file_backup_log_transfer_journallog_override_path: "{{ file_backup_log_transfer_journallog_override_dir }}/override.conf"
+
+file_backup_log_transfer_script_name: transfer_logs.sh
+file_backup_ssh_key_file: .ssh/ssh_to_backupservers
+
+file_backup_s3_transfer_script_name: transfer_logs_to_s3.sh
+file_backup_s3_download_script_name: download_logs_from_s3.sh
+
+awscli_install_path: /usr/local/bin/aws

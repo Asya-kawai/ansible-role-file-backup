@@ -12,8 +12,22 @@ UBUNTU_NODES=1
 CENTOS_NODES=1
 
 # Names will be ubuntu-1..N, centos-1..N
-ANSIBLE_INVENTORY=inventory.yml
-PLAYBOOK=playbook.yml
+ANSIBLE_INVENTORY ?= inventory.yml
+PLAYBOOK ?= playbook.yml
+
+# SSH user for backup server (log transfer test)
+BACKUP_SERVER_SSH_USER ?= backup-for-dest
+
+# file backup settings
+FILE_BACKUP_USER ?= log-backup
+FILE_BACKUP_GROUP ?= log-backup
+FILE_BACKUP_DEST_DIR ?= ''
+
+FILE_BACKUP_S3_TRANSFER_AWS_CLI_PROFILE=default
+FILE_BACKUP_S3_TRANSFER_BUCKET=my-backup-bucket
+
+FILE_BACKUP_LOG_TRANSFER_DEST_DIR=/backup
+FILE_BACKUP_LOG_TRANSFER_SSH_USER=$(BACKUP_SERVER_SSH_USER)
 
 # -----------------------------------------
 # Lint: ansible-lint for playbook and roles
@@ -73,7 +87,7 @@ create-nodes: check build-ubuntu-image build-centos-image
 		name=ubuntu-$$i; \
 		podman rm -f $$name >/dev/null 2>&1 || true; \
 		echo "[create] $$name ($(UBUNTU_IMAGE))"; \
-		podman run -d --name $$name --privileged --systemd=always $(UBUNTU_IMAGE); \
+		podman run -d --name $$name --network podman --privileged --systemd=always $(UBUNTU_IMAGE); \
 		# comm: Shows only the executable file name, truncated to 16 characters if longer. ; \
 		podman exec $$name bash -lc 'ps -p 1 -o comm=' ; \
 	done;
@@ -82,28 +96,212 @@ create-nodes: check build-ubuntu-image build-centos-image
 		name=centos-$$i; \
 		podman rm -f $$name >/dev/null 2>&1 || true; \
 		echo "[create] $$name ($(CENTOS_IMAGE))"; \
-		podman run -d --name $$name --privileged --systemd=always $(CENTOS_IMAGE); \
+		podman run -d --name $$name --network podman --privileged --systemd=always $(CENTOS_IMAGE); \
 		podman exec $$name bash -lc 'ps -p 1 -o comm=' ; \
 	done
+
+.PHONY: create-minio
+
+MINIO_ACCESS_KEY ?= minioadmin
+MINIO_SECRET_KEY ?= minioadminpass
+MINIO_PORT ?= 9000
+MINIO_CONSOLE_PORT ?= 9001
+
+create-minio:
+	@echo "==> Creating MinIO server for S3 transfer test"
+	@podman rm -f minio >/dev/null 2>&1 || true
+	@podman run -d --name minio --network podman \
+		-p $(MINIO_PORT):$(MINIO_PORT) -p $(MINIO_CONSOLE_PORT):$(MINIO_CONSOLE_PORT) \
+		-e MINIO_ROOT_USER=$(MINIO_ACCESS_KEY) \
+	  -e MINIO_ROOT_PASSWORD=$(MINIO_SECRET_KEY) \
+	  quay.io/minio/minio server /data --console-address ":$(MINIO_CONSOLE_PORT)"
+
+.PHONY: create-backup-server
+create-backup-server: generate-ssh-key
+	@echo "==> Creating backup server for log transfer test"
+	@podman rm -f backup-server >/dev/null 2>&1 || true
+	@podman run -d --name backup-server --network podman -p 2222:22 ubuntu:24.04 sleep infinity
+	@podman exec backup-server apt-get update
+	@podman exec backup-server apt-get install -y openssh-server rsync sudo
+	@podman exec backup-server useradd -m -s /bin/bash $(BACKUP_SERVER_SSH_USER) || true
+	@podman exec backup-server mkdir -p /home/$(BACKUP_SERVER_SSH_USER)/.ssh
+	@podman cp $(SSH_KEY_ID_BACKUP_SERVER).pub backup-server:/tmp/backup_server_key.pub
+	@podman exec backup-server bash -c 'cat /tmp/backup_server_key.pub >> /home/$(BACKUP_SERVER_SSH_USER)/.ssh/authorized_keys'
+	@podman exec backup-server rm /tmp/backup_server_key.pub
+	@podman exec backup-server chown -R $(BACKUP_SERVER_SSH_USER):$(BACKUP_SERVER_SSH_USER) /home/$(BACKUP_SERVER_SSH_USER)/.ssh
+	@podman exec backup-server chmod 700 /home/$(BACKUP_SERVER_SSH_USER)/.ssh
+	@podman exec backup-server chmod 600 /home/$(BACKUP_SERVER_SSH_USER)/.ssh/authorized_keys
+	@podman exec backup-server service ssh start
+
+.PHONY: create-others-components
+create-others-components: create-minio create-backup-server
+
+# -----------------------------------------
+# SSH key generation for log transfer test
+# -----------------------------------------
+.PHONY: generate-ssh-key
+
+SSH_KEY_ID_BACKUP_SERVER ?= id_backup_server
+
+generate-ssh-key:
+	@echo "==> Generating SSH key for backup-server access"
+	@if [ ! -f ./$(SSH_KEY_ID_BACKUP_SERVER) ]; then \
+	  ssh-keygen -t ed25519 -N '' -f ./$(SSH_KEY_ID_BACKUP_SERVER); \
+	  echo "SSH key generated: $(SSH_KEY_ID_BACKUP_SERVER), $(SSH_KEY_ID_BACKUP_SERVER).pub"; \
+	else \
+	  echo "SSH key already exists: $(SSH_KEY_ID_BACKUP_SERVER), $(SSH_KEY_ID_BACKUP_SERVER).pub"; \
+	fi
 
 # -----------------------------------------
 # Generate test playbook
 # -----------------------------------------
 .PHONY: generate-playbook
-generate-playbook:
-	@echo "==> Generating $(PLAYBOOK) for role test"
+generate-playbook: generate-ssh-key create-minio
+	@echo "==> Generating playbooks for each transfer case"
+
+	# 1. s3_transfer: false, log_transfer: false (default)
 	@echo "---" > $(PLAYBOOK)
-	@echo "- name: Test dir-backup role" >> $(PLAYBOOK)
+	@echo "- name: Test file-backup role (no transfer)" >> $(PLAYBOOK)
 	@echo "  hosts: all" >> $(PLAYBOOK)
 	@echo "  become: yes" >> $(PLAYBOOK)
 	@echo "  vars:" >> $(PLAYBOOK)
-	@echo "    dir_backup_targets:" >> $(PLAYBOOK)
-	@echo "      - name: etc" >> $(PLAYBOOK)
-	@echo "        src: /etc" >> $(PLAYBOOK)
-	@echo "      - name: opt" >> $(PLAYBOOK)
-	@echo "        src: /opt" >> $(PLAYBOOK)
+	@echo "    file_backup_user: $(FILE_BACKUP_USER)" >> $(PLAYBOOK)
+	@echo "    file_backup_group: $(FILE_BACKUP_GROUP)" >> $(PLAYBOOK)
+	@echo "    file_backup_dest_dir: $(FILE_BACKUP_DEST_DIR)" >> $(PLAYBOOK)
+	@echo "    file_backup_s3_transfer_enable: false" >> $(PLAYBOOK)
+	@echo "    file_backup_log_transfer_enable: false" >> $(PLAYBOOK)
 	@echo "  roles:" >> $(PLAYBOOK)
-	@echo "    - dir-backup" >> $(PLAYBOOK)
+	@echo "    - file-backup" >> $(PLAYBOOK)
+
+	# 2. s3_transfer: true, log_transfer: false
+	@echo "---" > playbook.s3_only.yml
+	@echo "- name: Test file-backup role (S3 transfer only)" >> playbook.s3_only.yml
+	@echo "  hosts: all" >> playbook.s3_only.yml
+	@echo "  become: yes" >> playbook.s3_only.yml
+	@echo "  vars:" >> playbook.s3_only.yml
+	@echo "    file_backup_s3_transfer_enable: true" >> playbook.s3_only.yml
+	@echo "    file_backup_log_transfer_enable: false" >> playbook.s3_only.yml
+	@echo "    file_backup_user: $(FILE_BACKUP_USER)" >> playbook.s3_only.yml
+	@echo "    file_backup_group: $(FILE_BACKUP_GROUP)" >> playbook.s3_only.yml
+	@echo "    file_backup_dest_dir: $(FILE_BACKUP_DEST_DIR)" >> playbook.s3_only.yml
+	@echo "    file_backup_s3_transfer_aws_cli_profile: $(FILE_BACKUP_S3_TRANSFER_AWS_CLI_PROFILE)" >> playbook.s3_only.yml
+	@echo "    file_backup_s3_transfer_bucket: $(FILE_BACKUP_S3_TRANSFER_BUCKET)" >> playbook.s3_only.yml
+	@echo "    aws:" >> playbook.s3_only.yml
+	@echo "      config:" >> playbook.s3_only.yml
+	@echo "        content: |" >> playbook.s3_only.yml
+	@echo "          [$(FILE_BACKUP_S3_TRANSFER_AWS_CLI_PROFILE)]" >> playbook.s3_only.yml
+	@echo "          region = us-east-1" >> playbook.s3_only.yml
+	@echo "          output = json" >> playbook.s3_only.yml
+	@MINIO_IP=""; \
+	for i in $$(seq 1 15); do \
+	  MINIO_IP=$$(podman inspect minio | grep -A 10 '"Networks"' | grep '"IPAddress"' | head -1 | awk -F '"' '{print $$4}'); \
+	  if [ -n "$$MINIO_IP" ]; then \
+			break; \
+		fi; \
+	  echo "Waiting for MinIO IP... ($$i)"; \
+	  sleep 2; \
+	done ; \
+	if [ -z "$$MINIO_IP" ]; then \
+		echo "[ERROR] MinIO IPアドレスが取得できませんでした"; \
+		exit 1; \
+	fi ; \
+	echo "          endpoint_url = http://$${MINIO_IP}:$(MINIO_PORT)" >> playbook.s3_only.yml
+	@echo "      credential:" >> playbook.s3_only.yml
+	@echo "        content: |" >> playbook.s3_only.yml
+	@echo "          [$(FILE_BACKUP_S3_TRANSFER_AWS_CLI_PROFILE)]" >> playbook.s3_only.yml
+	@echo "          aws_access_key_id = $(MINIO_ACCESS_KEY)" >> playbook.s3_only.yml
+	@echo "          aws_secret_access_key = $(MINIO_SECRET_KEY)" >> playbook.s3_only.yml
+	@echo "  roles:" >> playbook.s3_only.yml
+	@echo "    - file-backup" >> playbook.s3_only.yml
+
+	# 3. s3_transfer: true, log_transfer: true
+	@echo "---" > playbook.s3_and_log.yml
+	@echo "- name: Test file-backup role (S3 & log transfer)" >> playbook.s3_and_log.yml
+	@echo "  hosts: all" >> playbook.s3_and_log.yml
+	@echo "  become: yes" >> playbook.s3_and_log.yml
+	@echo "  vars:" >> playbook.s3_and_log.yml
+	@echo "    file_backup_s3_transfer_enable: true" >> playbook.s3_and_log.yml
+	@echo "    file_backup_log_transfer_enable: true" >> playbook.s3_and_log.yml
+	@echo "    file_backup_user: $(FILE_BACKUP_USER)" >> playbook.s3_and_log.yml
+	@echo "    file_backup_group: $(FILE_BACKUP_GROUP)" >> playbook.s3_and_log.yml
+	@echo "    file_backup_dest_dir: $(FILE_BACKUP_DEST_DIR)" >> playbook.s3_and_log.yml
+	@echo "    file_backup_s3_transfer_aws_cli_profile: $(FILE_BACKUP_S3_TRANSFER_AWS_CLI_PROFILE)" >> playbook.s3_and_log.yml
+	@echo "    file_backup_s3_transfer_bucket: $(FILE_BACKUP_S3_TRANSFER_BUCKET)" >> playbook.s3_and_log.yml
+	@echo "    aws:" >> playbook.s3_and_log.yml
+	@echo "      config:" >> playbook.s3_and_log.yml
+	@echo "        content: |" >> playbook.s3_and_log.yml
+	@echo "          [$(FILE_BACKUP_S3_TRANSFER_AWS_CLI_PROFILE)]" >> playbook.s3_and_log.yml
+	@echo "          region = us-east-1" >> playbook.s3_and_log.yml
+	@echo "          output = json" >> playbook.s3_and_log.yml
+	@MINIO_IP=""; \
+	for i in $$(seq 1 15); do \
+	  MINIO_IP=$$(podman inspect minio | grep -A 10 '"Networks"' | grep '"IPAddress"' | head -1 | awk -F '"' '{print $$4}'); \
+	  if [ -n "$$MINIO_IP" ]; then \
+			break; \
+		fi; \
+	  echo "Waiting for MinIO IP... ($$i)"; \
+	  sleep 2; \
+	done ; \
+	if [ -z "$$MINIO_IP" ]; then \
+		echo "[ERROR] MinIO IPアドレスが取得できませんでした"; \
+		exit 1; \
+	fi ; \
+	echo "          endpoint_url = http://$${MINIO_IP}:$(MINIO_PORT)" >> playbook.s3_and_log.yml
+	@echo "      credential:" >> playbook.s3_and_log.yml
+	@echo "        content: |" >> playbook.s3_and_log.yml
+	@echo "          [$(FILE_BACKUP_S3_TRANSFER_AWS_CLI_PROFILE)]" >> playbook.s3_and_log.yml
+	@echo "          aws_access_key_id = $(MINIO_ACCESS_KEY)" >> playbook.s3_and_log.yml
+	@echo "          aws_secret_access_key = $(MINIO_SECRET_KEY)" >> playbook.s3_and_log.yml
+	@BACKUP_SERVER_IP=""; \
+	for i in $$(seq 1 15); do \
+	  BACKUP_SERVER_IP=$$(podman inspect backup-server | grep -A 10 '"Networks"' | grep '"IPAddress"' | head -1 | awk -F '"' '{print $$4}'); \
+	  if [ -n "$$BACKUP_SERVER_IP" ]; then \
+			break; \
+		fi; \
+	  echo "Waiting for backup server IP... ($$i)"; \
+	  sleep 2; \
+	done ; \
+	if [ -z "$$BACKUP_SERVER_IP" ]; then \
+		echo "[ERROR] Backup server IPアドレスが取得できませんでした"; \
+		exit 1; \
+	fi ; \
+	echo  "    file_backup_log_transfer_hosts: $${BACKUP_SERVER_IP}" >> playbook.s3_and_log.yml
+	@echo "    file_backup_log_transfer_dest_dir: $(FILE_BACKUP_LOG_TRANSFER_DEST_DIR)" >> playbook.s3_and_log.yml
+	@echo "    file_backup_log_transfer_ssh_user: $(BACKUP_SERVER_SSH_USER)" >> playbook.s3_and_log.yml
+	@echo "    file_backup_log_transfer_ssh_key: \"{{ lookup('file', '$(SSH_KEY_ID_BACKUP_SERVER)', errors='ignore') }}\"" >> playbook.s3_and_log.yml
+	@echo "  roles:" >> playbook.s3_and_log.yml
+	@echo "    - file-backup" >> playbook.s3_and_log.yml
+
+	# 4. s3_transfer: false, log_transfer: true
+	@echo "---" > playbook.log_only.yml
+	@echo "- name: Test file-backup role (log transfer only)" >> playbook.log_only.yml
+	@echo "  hosts: all" >> playbook.log_only.yml
+	@echo "  become: yes" >> playbook.log_only.yml
+	@echo "  vars:" >> playbook.log_only.yml
+	@echo "    file_backup_s3_transfer_enable: false" >> playbook.log_only.yml
+	@echo "    file_backup_log_transfer_enable: true" >> playbook.log_only.yml
+	@echo "    file_backup_user: $(FILE_BACKUP_USER)" >> playbook.log_only.yml
+	@echo "    file_backup_group: $(FILE_BACKUP_GROUP)" >> playbook.log_only.yml
+	@echo "    file_backup_dest_dir: $(FILE_BACKUP_DEST_DIR)" >> playbook.log_only.yml
+	@BACKUP_SERVER_IP=""; \
+	for i in $$(seq 1 15); do \
+	  BACKUP_SERVER_IP=$$(podman inspect backup-server | grep -A 10 '"Networks"' | grep '"IPAddress"' | head -1 | awk -F '"' '{print $$4}'); \
+	  if [ -n "$$BACKUP_SERVER_IP" ]; then \
+			break; \
+		fi; \
+	  echo "Waiting for backup server IP... ($$i)"; \
+	  sleep 2; \
+	done ; \
+	if [ -z "$$BACKUP_SERVER_IP" ]; then \
+		echo "[ERROR] Backup server IPアドレスが取得できませんでした"; \
+		exit 1; \
+	fi ; \
+	echo  "    file_backup_log_transfer_hosts: $${BACKUP_SERVER_IP}" >> playbook.log_only.yml
+	@echo "    file_backup_log_transfer_dest_dir: $(FILE_BACKUP_LOG_TRANSFER_DEST_DIR)" >> playbook.log_only.yml
+	@echo "    file_backup_log_transfer_ssh_user: $(BACKUP_SERVER_SSH_USER)" >> playbook.log_only.yml
+	@echo "    file_backup_log_transfer_ssh_key: \"{{ lookup('file', '$(SSH_KEY_ID_BACKUP_SERVER)', errors='ignore') }}\"" >> playbook.log_only.yml
+	@echo "  roles:" >> playbook.log_only.yml
+	@echo "    - file-backup" >> playbook.log_only.yml
 
 # -----------------------------------------
 # Generate dynamic Ansible inventory (Podman connection → SSH is not needed)
@@ -158,7 +356,7 @@ ansible: generate-playbook generate-inventory
 # Destroy all containers
 # -----------------------------------------
 .PHONY: destroy
-destroy:
+destroy: destroy-others-components
 	@echo "==> Removing Ubuntu nodes"
 	@for i in $$(seq 1 $(UBUNTU_NODES)); do \
 		name=ubuntu-$$i; \
@@ -172,28 +370,40 @@ destroy:
 		podman rm -f $$name >/dev/null 2>&1 || true; \
 	 done;
 	@echo "==> Removing roles directory, tar.gz, inventory, playbook, and test files"
-	rm -rf roles dir-backup.tar.gz
+	rm -rf roles file-backup.tar.gz
 	rm -rf *.retry
 	rm -rf *.log
 	rm -rf tmp test-output
-	rm -f $(ANSIBLE_INVENTORY) $(PLAYBOOK)
+	rm -f $(ANSIBLE_INVENTORY) $(PLAYBOOK) playbook.s3_only.yml playbook.s3_and_log.yml playbook.log_only.yml
+
+.PHONY: destroy-others-components
+destroy-others-components: destroy-minio destroy-backup-server
+
+.PHONY: destroy-minio
+destroy-minio:
+	@echo "==> Removing MinIO server"
+	@podman rm -f minio >/dev/null 2>&1 || true;
+
+.PHONY: destroy-backup-server
+destroy-backup-server:
+	@echo "==> Removing backup server"
+	@podman rm -f backup-server >/dev/null 2>&1 || true;
 
 .PHONY: clean
-clean:
-	destroy
+clean: destroy
 
 # -----------------------------------------
 # Test Ansible Galaxy role install & execution
 # -----------------------------------------
 .PHONY: test-role
-test-role: create-nodes deps generate-playbook generate-inventory
+test-role: deps create-nodes create-others-components generate-playbook generate-inventory
 	@echo "==> Packaging role for Galaxy install"
-	rm -f dir-backup.tar.gz
-	tar czf dir-backup.tar.gz --exclude=dir-backup.tar.gz --exclude=.git --exclude=*.pyc --exclude=__pycache__ .
+	rm -f file-backup.tar.gz
+	tar czf file-backup.tar.gz --exclude=file-backup.tar.gz --exclude=.git --exclude=*.pyc --exclude=__pycache__ .
 	@echo "==> Installing role via ansible-galaxy"
 	rm -rf roles
-	mkdir -p roles/dir-backup
-	tar xzf dir-backup.tar.gz -C roles/dir-backup
+	mkdir -p roles/file-backup
+	tar xzf file-backup.tar.gz -C roles/file-backup
 	@echo "==> Running test playbook"
 	ansible-playbook -i $(ANSIBLE_INVENTORY) $(PLAYBOOK) $(ANSIBLE_OPTS) -e 'roles_path=./roles'
 	@echo "==> Test completed"

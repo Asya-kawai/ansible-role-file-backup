@@ -1,26 +1,65 @@
 ---
-dir_backup_debian_install:
-  - git
-dir_backup_redhat_install:
-  - git
+# Back
+# - in local
+# - (to or from) s3
+# - to servers
+file_backup_debian_install:
+  - rsync
+  - zip
+  - unzip
+  - auditd
+  - jq
+file_backup_redhat_install:
+  - rsync
+  - zip
+  - unzip
+  - audit
+  - jq
 
-dir_backup_user: root
-dir_backup_group: root
+# Settings for file backup in local.
+file_backup_user: root
+file_backup_group: root
+# When file_backup_dest_dir is empty or not set, backup files will be stored in the same directory as original log files.
+file_backup_dest_dir: ''
+file_backup_auditlog_backup_on_calendar: '*-*-* 00:00:00'
+file_backup_authlog_backup_on_calendar: '*-*-* 00:10:00'
+file_backup_dmesg_backup_on_calendar: '*-*-* 00:20:00'
+file_backup_journallog_backup_on_calendar: '*-*-* 00:30:00'
 
-dir_backup_bin_dir: /opt/bin
-dir_backup_output_dir: /var/backup
-dir_backup_on_calender: '*-*-* 00:00:00'
+# Settings for log transfer (to or from) S3.
+file_backup_s3_transfer_enable: false
+file_backup_s3_transfer_user: root
+file_backup_s3_transfer_group: root
+file_backup_s3_transfer_aws_cli_profile: default
+file_backup_s3_transfer_bucket: my-backup-bucket
 
-dir_backup_core_script_repo: https://github.com/Asya-kawai/dir-backup.git
-dir_backup_core_script_version: HEAD
+# AWS credentials setting.
+# config and credential are required when file_backup_s3_transfer_enable is true, otherwise they are not required.
+# Put in root directory always because transfer scripts will be executed by using sudo command(as root user),
+# and AWS cli will look for credentials in root home directory.
+aws:
+  config:
+    content: |
+      [default]
+      region = us-east-1
+      output = json
+      endpoint_url = https://s3.amazonaws.com
+  credential:
+    content: |
+      [default]
+      aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+      aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 
-dir_backup_targets: []
-# dir_backup_targets is a list of objects having fileds of 'name' and 'src'.
-# ---
-# dir_backup_targets:
-#   - name: nginx
-#     src: /usr/local/etc/nginx
-#   - name: etc
-#     src: /etc
-#   - name: opt
-#     src: /opt
+# Settings for log transfer to backup servers.
+file_backup_log_transfer_enable: false
+# hosts to transfer logs, space separated if multiple.
+file_backup_log_transfer_hosts: "backup.aintek.xyz backup2.aintek.xyz"
+file_backup_log_transfer_dest_dir: /backup
+file_backup_log_transfer_ssh_user: backup
+file_backup_log_transfer_ssh_key: "{{ lookup('file', 'no_such_file', errors='ignore') }}"
+file_backup_log_transfer_auditlog_calendar: '*-*-* 01:00:00'
+file_backup_log_transfer_authlog_calendar: '*-*-* 01:10:00'
+file_backup_log_transfer_dmesg_calendar: '*-*-* 01:20:00'
+file_backup_log_transfer_journallog_calendar: '*-*-* 01:30:00'
+
+file_backup_expire_days: 460

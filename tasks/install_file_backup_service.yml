@@ -1,0 +1,136 @@
+---
+- name: Setup a system for periodic file backup in local
+  ansible.builtin.template:
+    src: "{{ file_backup_service_dir.lstrip('/') }}/log_backup.service.j2"
+    dest: "{{ item.backup_service_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  with_items:
+    - name: auditlog
+      backup_service_path: "{{ file_backup_auditlog_backup_service_path }}"
+      backup_timer_name: "{{ file_backup_auditlog_backup_timer_name }}"
+      backup_script_name: "{{ file_backup_auditlog_backup_script_name }}"
+      source_path: "{{ file_backup_auditlog_dir.rstrip('/') }}/audit.log.*.gz"
+    - name: authlog
+      backup_service_path: "{{ file_backup_authlog_backup_service_path }}"
+      backup_timer_name: "{{ file_backup_authlog_backup_timer_name }}"
+      backup_script_name: "{{ file_backup_authlog_backup_script_name }}"
+      source_path: "{{ file_backup_authlog_dir.rstrip('/') }}/auth.log.*.gz"
+    - name: dmesg
+      backup_service_path: "{{ file_backup_dmesg_backup_service_path }}"
+      backup_timer_name: "{{ file_backup_dmesg_backup_timer_name }}"
+      backup_script_name: "{{ file_backup_dmesg_backup_script_name }}"
+      source_path: "{{ file_backup_dmesg_dir.rstrip('/') }}/dmesg.*.gz"
+    - name: journallog
+      backup_service_path: "{{ file_backup_journallog_backup_service_path }}"
+      backup_timer_name: "{{ file_backup_journallog_backup_timer_name }}"
+      backup_script_name: "{{ file_backup_journallog_backup_script_name }}"
+      source_path: "{{ file_backup_journallog_dir.rstrip('/') }}/*/system.journal.*.gz"
+  tags:
+    - file-backup
+    - file-backup-install-file-backup-service
+
+- name: Setup a timer for periodic file backup in local
+  ansible.builtin.template:
+    src: "{{ file_backup_service_dir.lstrip('/') }}/log_backup.timer.j2"
+    dest: "{{ item.backup_timer_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  with_items:
+    - name: auditlog
+      backup_timer_path: "{{ file_backup_auditlog_backup_timer_path }}"
+      backup_service_name: "{{ file_backup_auditlog_backup_service_name }}"
+      backup_on_calendar: "{{ file_backup_auditlog_backup_on_calendar }}"
+    - name: authlog
+      backup_timer_path: "{{ file_backup_authlog_backup_timer_path }}"
+      backup_service_name: "{{ file_backup_authlog_backup_service_name }}"
+      backup_on_calendar: "{{ file_backup_authlog_backup_on_calendar }}"
+    - name: dmesg
+      backup_timer_path: "{{ file_backup_dmesg_backup_timer_path }}"
+      backup_service_name: "{{ file_backup_dmesg_backup_service_name }}"
+      backup_on_calendar: "{{ file_backup_dmesg_backup_on_calendar }}"
+    - name: journallog
+      backup_timer_path: "{{ file_backup_journallog_backup_timer_path }}"
+      backup_service_name: "{{ file_backup_journallog_backup_service_name }}"
+      backup_on_calendar: "{{ file_backup_journallog_backup_on_calendar }}"
+  tags:
+    - file-backup
+    - file-backup-install-file-backup-service
+
+- name: Check the timer for periodic auditlog backup in local
+  ansible.builtin.stat:
+    path: "{{ file_backup_auditlog_backup_timer_path }}"
+  register: file_backup_auditlog_backup_timer_path_result
+  tags:
+    - file-backup
+    - file-backup-install-file-backup-service
+
+- name: Enable the timer for periodic auditlog backup in local
+  ansible.builtin.systemd:
+    name: "{{ file_backup_auditlog_backup_timer_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: file_backup_auditlog_backup_timer_path_result.stat.exists
+  tags:
+    - file-backup
+    - file-backup-install-file-backup-service
+
+- name: Check the timer for periodic authlog backup in local
+  ansible.builtin.stat:
+    path: "{{ file_backup_authlog_backup_timer_path }}"
+  register: file_backup_authlog_backup_timer_path_result
+  tags:
+    - file-backup
+    - file-backup-install-file-backup-service
+
+- name: Enable the timer for periodic authlog backup in local
+  ansible.builtin.systemd:
+    name: "{{ file_backup_authlog_backup_timer_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: file_backup_authlog_backup_timer_path_result.stat.exists
+  tags:
+    - file-backup
+    - file-backup-install-file-backup-service
+
+- name: Check the timer for periodic dmesg backup in local
+  ansible.builtin.stat:
+    path: "{{ file_backup_dmesg_backup_timer_path }}"
+  register: file_backup_dmesg_backup_timer_path_result
+  tags:
+    - file-backup
+    - file-backup-install-file-backup-service
+
+- name: Enable the timer for periodic dmesg backup in local
+  ansible.builtin.systemd:
+    name: "{{ file_backup_dmesg_backup_timer_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: file_backup_dmesg_backup_timer_path_result.stat.exists
+  tags:
+    - file-backup
+    - file-backup-install-file-backup-service
+
+- name: Check the timer for periodic journallog backup in local
+  ansible.builtin.stat:
+    path: "{{ file_backup_journallog_backup_timer_path }}"
+  register: file_backup_journallog_backup_timer_path_result
+  tags:
+    - file-backup
+    - file-backup-install-file-backup-service
+
+- name: Enable the timer for periodic journallog backup in local
+  ansible.builtin.systemd:
+    name: "{{ file_backup_journallog_backup_timer_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: file_backup_journallog_backup_timer_path_result.stat.exists
+  tags:
+    - file-backup
+    - file-backup-install-file-backup-service

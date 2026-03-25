@@ -1,3 +1,3 @@
 FROM quay.io/centos/centos:stream9
-RUN dnf -y update && dnf -y install systemd systemd-udev systemd-sysv procps sudo
+RUN dnf -y update && dnf -y install systemd systemd-udev systemd-sysv procps sudo openssh-server rsync
 CMD ["/usr/lib/systemd/systemd"]

@@ -1,0 +1,38 @@
+---
+# Transfer scripts are put in root home directory for simplicity,
+# (no need to consider multiple users' home directories).
+# So, even file_backup_user is not root, the scripts are still put in /root/scripts.
+- name: Install download scripts in root home directory
+  ansible.builtin.template:
+    src: "{{ item.lstrip('/') }}.j2"
+    dest: "/root/{{ item.lstrip('/') }}"
+    owner: root
+    group: root
+    mode: "0700"
+  with_items:
+    - /scripts/{{ file_backup_s3_download_script_name }}
+  when:
+    - file_backup_s3_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-install-s3-download-scripts
+
+- name: Ensure sudoers rule for backup user is present when download enable
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/{{ file_backup_user }}
+    create: true
+    owner: root
+    group: root
+    mode: '0440'
+    line: "{{ file_backup_user }} ALL=(ALL) NOPASSWD: /root/{{ item.lstrip('/') }}"
+    state: present
+    validate: '/usr/sbin/visudo -cf %s'
+  with_items:
+    - /scripts/{{ file_backup_s3_download_script_name }}
+  when:
+    - file_backup_s3_transfer_enable
+    - file_backup_user != 'root'
+  tags:
+    - file-backup
+    - file-backup-install-s3-download-scripts
+

@@ -1,0 +1,17 @@
+[Unit]
+Description=The backup service for {{ item.name }}
+Wants={{ item.backup_timer_name }}
+
+[Service]
+Type=oneshot
+User={{ file_backup_user }}
+Group={{ file_backup_group }}
+{% if file_backup_s3_transfer_enable %}
+ExecStart=/usr/bin/sudo /root/scripts/{{ item.backup_script_name }}
+ExecStart=/usr/bin/sudo /root/scripts/{{ file_backup_s3_transfer_script_name }} "{{ item.source_path }}"
+{% else %}
+ExecStart=/usr/bin/sudo /root/scripts/{{ item.backup_script_name }}
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target

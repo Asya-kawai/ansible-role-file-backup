@@ -1,0 +1,25 @@
+---
+- name: Create backup group
+  ansible.builtin.group:
+    name: "{{ file_backup_group }}"
+    system: true
+    state: present
+  when: not file_backup_user == 'root'
+  tags:
+    - file-backup
+    - file-backup-create-backup-user
+
+- name: Create backup user (nologin shell)
+  ansible.builtin.user:
+    name: "{{ file_backup_user }}"
+    shell: /usr/sbin/nologin
+    system: true
+    group: "{{ file_backup_group }}"
+    groups: adm
+    append: true
+    create_home: true
+    state: present
+  when: not file_backup_user == 'root'
+  tags:
+    - file-backup
+    - file-backup-create-backup-user

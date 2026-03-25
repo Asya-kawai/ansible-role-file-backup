@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Download backup files from S3 (Object Storage).
+# It is triggered manually or by systemd.timer.
+#
+## This script accepts one argument:
+#   1. Local directory to save the downloaded files
+
+set -euo pipefail
+
+# AWS CLI settings for compatibility with Sakura Object Storage.
+export AWS_REQUEST_CHECKSUM_CALCULATION=WHEN_REQUIRED
+export AWS_RESPONSE_CHECKSUM_VALIDATION=WHEN_REQUIRED
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <local_download_dir>"
+    exit 1
+fi
+
+LOCAL_DOWNLOAD_DIR="$1"
+S3_SOURCE="s3://{{ file_backup_s3_transfer_bucket.rstrip('/') }}/{{ inventory_hostname }}"
+
+function download_from_s3() {
+    # 1. Scan S3 for backup files
+    # 2. Check if file name contains date (YYYYMMDD)
+    # 3. Create local destination directory
+    # 4. Download file from S3
+    # 5. Delete old local files (if needed)
+    DIRNAME=$(dirname "$LOCAL_DOWNLOAD_DIR")
+    mkdir -p "$DIRNAME"
+    BUCKET_NAME="{{ file_backup_s3_transfer_bucket }}"
+    for LOG_PATH in $(aws s3api list-objects --bucket $BUCKET_NAME | jq '.Contents[] | .Key' -r); do
+        if [[ "$LOG_PATH" =~ \.[0-9]{8}\.gz$ ]]; then
+            aws s3 cp "s3://$BUCKET_NAME/$LOG_PATH" "$DIRNAME/" && echo "Downloaded $LOG_PATH to $DIRNAME/"
+            aws s3 rm "s3://$BUCKET_NAME/$LOG_PATH" && echo "Deleted $LOG_PATH from S3"
+        fi
+    done
+}
+
+download_from_s3
+exit 0

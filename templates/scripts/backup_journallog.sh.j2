@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# Create a backup of journal log as .gz file,
+# and delete expired journal log files in local.
+# It is triggered by systemd.timer.
+
+set -euo pipefail
+
+BACKUP_EXPIRE_DAYS={{ file_backup_expire_days }}
+BACKUP_USER="{{ file_backup_user }}"
+BACKUP_GROUP="{{ file_backup_group }}"
+JOURNAL_LOG_DIR="{{ file_backup_journallog_dir }}"
+
+YESTERDAY=$(date +%Y%m%d -d '-1day')
+
+JOURNAL_LOG_GZ="${JOURNAL_LOG_DIR}/system.journal.${YESTERDAY}.gz"
+
+function create_backup_file() {
+    # Backup system.journal only.
+    JOURNAL_LOG_PATH=$(ls ${JOURNAL_LOG_DIR}/*/system.journal)
+
+	if [ ! -f $JOURNAL_LOG_PATH ]; then
+        echo "$JOURNAL_LOG_PATH does not exist."
+        return 1
+    fi
+
+    # Idempotency: skip if backup for yesterday already exists
+    {% if file_backup_dest_dir %}
+    if [ -f {{ file_backup_dest_dir.lstrip('/') }}/"$JOURNAL_LOG_GZ" ]; then
+        echo "$JOURNAL_LOG_GZ already exists. Skip."
+        return 0
+    fi
+    {% else %}
+    if [ -f $JOURNAL_LOG_GZ ]; then
+        echo "$JOURNAL_LOG_GZ already exists. Skip."
+        return 0
+    fi
+    {% endif %}
+
+    cp $JOURNAL_LOG_PATH ${JOURNAL_LOG_PATH}.${YESTERDAY}
+    chown "$BACKUP_USER":"$BACKUP_GROUP" ${JOURNAL_LOG_PATH}.${YESTERDAY}
+    truncate -s 0 $JOURNAL_LOG_PATH
+    gzip -f "${JOURNAL_LOG_PATH}.${YESTERDAY}"
+    {% if file_backup_dest_dir %}
+    mv "$JOURNAL_LOG_GZ" {{ file_backup_dest_dir.lstrip('/') }}/"$JOURNAL_LOG_GZ"
+    {% endif %}
+}
+
+# Delete old files whose expiration date exceeds $BACKUP_EXPIRE_DAYS
+# on local and remote.
+function delete_old_files() {
+    find "$JOURNAL_LOG_DIR" -name 'system.journal.*' -ctime +$BACKUP_EXPIRE_DAYS -delete
+}
+
+create_backup_file
+delete_old_files
+
+exit 0

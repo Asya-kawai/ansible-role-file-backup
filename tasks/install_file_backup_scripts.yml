@@ -1,0 +1,48 @@
+---
+- name: Create a directory for putting scripts in root home directory
+  ansible.builtin.file:
+    path: /root/scripts
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - file-backup
+    - file-backup-install-backup-scripts
+
+- name: Install backup scripts in root home directory
+  ansible.builtin.template:
+    src: "{{ item.lstrip('/') }}.j2"
+    dest: "/root/{{ item.lstrip('/') }}"
+    owner: root
+    group: root
+    mode: '0700'
+  with_items:
+    - /scripts/{{ file_backup_auditlog_backup_script_name }}
+    - /scripts/{{ file_backup_authlog_backup_script_name }}
+    - /scripts/{{ file_backup_dmesg_backup_script_name }}
+    - /scripts/{{ file_backup_journallog_backup_script_name }}
+  tags:
+    - file-backup
+    - file-backup-install-backup-scripts
+
+- name: Ensure sudoers rule for backup user is present
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/{{ file_backup_user }}
+    create: true
+    owner: root
+    group: root
+    mode: '0440'
+    line: "{{ file_backup_user }} ALL=(ALL) NOPASSWD: /root/{{ item.lstrip('/') }}"
+    state: present
+    validate: '/usr/sbin/visudo -cf %s'
+  with_items:
+    - /scripts/{{ file_backup_auditlog_backup_script_name }}
+    - /scripts/{{ file_backup_authlog_backup_script_name }}
+    - /scripts/{{ file_backup_dmesg_backup_script_name }}
+    - /scripts/{{ file_backup_journallog_backup_script_name }}
+  when:
+    - file_backup_user != 'root'
+  tags:
+    - file-backup
+    - file-backup-install-backup-scripts

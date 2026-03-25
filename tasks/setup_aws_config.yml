@@ -1,0 +1,43 @@
+---
+# Log transfer to s3 script will be executed by using sudo command(as root user),
+# and AWS cli will look for credentials in root home directory,
+# so put AWS credentials in root home directory always.
+- name: Create .aws in root directory
+  ansible.builtin.file:
+    path: /root/.aws
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when:
+    - file_backup_s3_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-to-s3
+    - file-backup-create-aws-config
+
+- name: Check .aws in root directory
+  ansible.builtin.stat:
+    path: /root/.aws
+  register: aws_dir_in_root
+  when:
+    - file_backup_s3_transfer_enable
+  tags:
+    - file-backup
+    - file-backup-to-s3
+    - file-backup-create-aws-config
+
+- name: Copy AWS cli config setting in root
+  ansible.builtin.copy:
+    content: "{{ aws.config.content }}"
+    dest: /root/.aws/config
+    owner: root
+    group: root
+    mode: '0600'
+  when:
+    - file_backup_s3_transfer_enable
+    - aws_dir_in_root.stat.exists
+  tags:
+    - file-backup
+    - file-backup-to-s3
+    - file-backup-create-aws-config

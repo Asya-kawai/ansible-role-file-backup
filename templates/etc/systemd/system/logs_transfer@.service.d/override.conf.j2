@@ -1,0 +1,8 @@
+[Service]
+ExecStart=
+{% if file_backup_s3_transfer_enable %}
+ExecStart=/usr/bin/sudo /root/scripts/{{ file_backup_s3_download_script_name }} "{{ item.download_dir }}"
+ExecStart=/usr/bin/sudo /root/scripts/{{ file_backup_log_transfer_script_name }} "{{ item.source_path }}"
+{% else %}
+ExecStart=/usr/bin/sudo /root/scripts/{{ file_backup_log_transfer_script_name }} "{{ item.source_path }}"
+{% endif %}
