@@ -1,7 +1,7 @@
 ---
 galaxy_info:
   namespace: aintek_xyz
-  role_name: backup
+  role_name: file_backup
   author: Toshiki Kawai
   company: Aintek.xyz
   description: Set up backup services on any systems
