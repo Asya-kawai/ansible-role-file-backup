@@ -1,8 +1,8 @@
 [Unit]
 Description=The timer of backup service for {{ item.name }}
-Requires={{ item.backup_service_name }}
 
 [Timer]
+Unit={{ item.backup_service_name }}
 OnCalendar={{ item.backup_on_calendar }}
 
 [Install]

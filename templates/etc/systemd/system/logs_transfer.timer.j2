@@ -1,8 +1,8 @@
 [Unit]
 Description=The timer for log transfer of {{ item.name }} to backupservers
-Requires={{ item.transfer_service_name }}
 
 [Timer]
+Unit={{ item.transfer_service_name }}
 OnCalendar={{ item.transfer_on_calendar }}
 
 [Install]
