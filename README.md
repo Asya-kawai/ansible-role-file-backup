@@ -23,12 +23,18 @@
 # バックアップユーザー/グループ
 file_backup_user: root
 file_backup_group: root
-
 # バックアップ先ディレクトリ（空の場合は元ファイルと同じ場所）
 file_backup_dest_dir: ''
+# バックアップスケジュール例。S3転送が有効の場合、バックアップ後にS3転送する。
+file_backup_auditlog_backup_on_calendar: '*-*-* 00:00:00'
+file_backup_authlog_backup_on_calendar: '*-*-* 00:10:00'
+file_backup_dmesg_backup_on_calendar: '*-*-* 00:20:00'
+file_backup_journallog_backup_on_calendar: '*-*-* 00:30:00'
 
 # S3転送有効化
 file_backup_s3_transfer_enable: true
+file_backup_s3_transfer_user: root
+file_backup_s3_transfer_group: root
 file_backup_s3_transfer_bucket: my-backup-bucket
 file_backup_s3_transfer_aws_cli_profile: default
 
@@ -47,11 +53,20 @@ aws:
       aws_access_key_id = AKIAIOSFODNN7EXAMPLE
       aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 
-# バックアップスケジュール例
-file_backup_auditlog_backup_on_calendar: '*-*-* 00:00:00'
-file_backup_authlog_backup_on_calendar: '*-*-* 00:10:00'
-file_backup_dmesg_backup_on_calendar: '*-*-* 00:20:00'
-file_backup_journallog_backup_on_calendar: '*-*-* 00:30:00'
+# ファイル転送有効化
+file_backup_log_transfer_enable: true
+# 2つ以上のホストに転送する場合はスペース区切り
+file_backup_log_transfer_hosts: "backup.aintek.xyz backup2.aintek.xyz"
+# ファイル転送先ディレクトリ
+file_backup_log_transfer_dest_dir: /backup
+# ファイル転送ユーザ
+file_backup_log_transfer_ssh_user: backup
+file_backup_log_transfer_ssh_key: "{{ lookup('file', 'no_such_file', errors='ignore') }}"
+# ファイル転送スケジュール。S3転送が有効の場合、この時刻にS3ダウンロードおよびファイル転送する。
+file_backup_log_transfer_auditlog_calendar: '*-*-* 01:00:00'
+file_backup_log_transfer_authlog_calendar: '*-*-* 01:10:00'
+file_backup_log_transfer_dmesg_calendar: '*-*-* 01:20:00'
+file_backup_log_transfer_journallog_calendar: '*-*-* 01:30:00'
 ```
 
 ## 注意事項
