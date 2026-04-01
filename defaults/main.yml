@@ -54,6 +54,9 @@ aws:
 file_backup_log_transfer_enable: false
 # hosts to transfer logs, space separated if multiple.
 file_backup_log_transfer_hosts: "backup.aintek.xyz backup2.aintek.xyz"
+# When file_backup_log_transfer_dest_dir is set,
+# backup files will be stored in ${file_backup_log_transfer_dest_dir}/${HOSTNAME} in backup servers,
+# otherwise(e.g. when file_backup_log_transfer_dest_dir is empty) they will be stored in /${HOSTNAME} in backup servers.
 file_backup_log_transfer_dest_dir: /backup
 file_backup_log_transfer_ssh_user: backup
 file_backup_log_transfer_ssh_key: "{{ lookup('file', 'no_such_file', errors='ignore') }}"

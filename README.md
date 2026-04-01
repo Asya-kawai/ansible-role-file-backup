@@ -57,7 +57,7 @@ aws:
 file_backup_log_transfer_enable: true
 # 2つ以上のホストに転送する場合はスペース区切り
 file_backup_log_transfer_hosts: "backup.aintek.xyz backup2.aintek.xyz"
-# ファイル転送先ディレクトリ
+# ファイル転送先トップディレクトリ。この下にホスト名でディレクトリが作成され、その下にログが配置される。
 file_backup_log_transfer_dest_dir: /backup
 # ファイル転送ユーザ
 file_backup_log_transfer_ssh_user: backup
