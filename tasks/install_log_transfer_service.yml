@@ -29,18 +29,22 @@
       override_conf_path: "{{ file_backup_log_transfer_auditlog_override_path }}"
       download_dir: "{{ file_backup_auditlog_dir.rstrip('/') }}"
       source_path: "{{ file_backup_auditlog_dir.rstrip('/') }}/audit.log.*.gz"
+      dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/{{ inventory_hostname }}"
     - name: authlog
       override_conf_path: "{{ file_backup_log_transfer_authlog_override_path }}"
       download_dir: "{{ file_backup_authlog_dir.rstrip('/') }}"
       source_path: "{{ file_backup_authlog_dir.rstrip('/') }}/auth.log.*.gz"
+      dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/{{ inventory_hostname }}"
     - name: dmesg
       override_conf_path: "{{ file_backup_log_transfer_dmesg_override_path }}"
       download_dir: "{{ file_backup_dmesg_dir.rstrip('/') }}"
       source_path: "{{ file_backup_dmesg_dir.rstrip('/') }}/dmesg.*.gz"
+      dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/{{ inventory_hostname }}"
     - name: journallog
       override_conf_path: "{{ file_backup_log_transfer_journallog_override_path }}"
       download_dir: "{{ file_backup_journallog_dir.rstrip('/') }}"
       source_path: "{{ file_backup_journallog_dir.rstrip('/') }}/*/system.journal.*.gz"
+      dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/{{ inventory_hostname }}"
   when:
     - file_backup_log_transfer_enable
   tags:
