@@ -11,8 +11,10 @@
 
 set -euo pipefail
 
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <local_backup_directory_or_file>"
+
+# Accept 1 or 2 arguments
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "Usage: $0 <local_backup_directory_or_file> [backup_dir]"
     exit 1
 fi
 
@@ -23,9 +25,11 @@ else
     LOCAL_FILES=("$LOCAL_PATH")
 fi
 
+# Default backup directory is set to `file_backup_log_transfer_dest_dir`(ansible variable) with hostname subdirectory if not specified as an argument.
+BACKUP_DIR="${2:-{{ file_backup_log_transfer_dest_dir }}/$(hostname)}"
+
 BACKUP_EXPIRE_DAYS={{ file_backup_expire_days }}
 BACKUP_SERVERS="{{ file_backup_log_transfer_hosts }}"
-BACKUP_DEST_DIR="{{ file_backup_log_transfer_dest_dir }}"
 REMOTE_USER="{{ file_backup_log_transfer_ssh_user }}"
 
 # --------------------------------------------------------------------
@@ -89,7 +93,6 @@ function store_logs() {
         fi
 
         HOSTNAME=$(hostname)
-        BACKUP_DIR=${BACKUP_DEST_DIR}/${HOSTNAME}
 
         # Create destination directory
         make_dst_dir "$BACKUP_DIR"

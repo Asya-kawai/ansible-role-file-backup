@@ -5,6 +5,8 @@
 #
 ## This script accepts one argument:
 #   1. Local directory to save the downloaded files
+#   2. Expire days for deletion after download
+#      (default: set `file_backup_s3_expire_days`(ansible variable) when defined, otherwise 1 day)
 
 set -euo pipefail
 
@@ -12,12 +14,14 @@ set -euo pipefail
 export AWS_REQUEST_CHECKSUM_CALCULATION=WHEN_REQUIRED
 export AWS_RESPONSE_CHECKSUM_VALIDATION=WHEN_REQUIRED
 
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <local_download_dir>"
+# Accept 1 or 2 arguments
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "Usage: $0 <local_download_dir> [expire_days]"
     exit 1
 fi
 
 LOCAL_DOWNLOAD_DIR="$1"
+EXPIRE_DAYS="${2:-{{ file_backup_s3_expire_days | default(1) }}}"
 S3_SOURCE="s3://{{ file_backup_s3_transfer_bucket.rstrip('/') }}/{{ inventory_hostname }}"
 
 function download_from_s3() {
@@ -29,10 +33,21 @@ function download_from_s3() {
     DIRNAME=$(dirname "$LOCAL_DOWNLOAD_DIR")
     mkdir -p "$DIRNAME"
     BUCKET_NAME="{{ file_backup_s3_transfer_bucket }}"
+    EXPIRE_DATE=$(date -d "${EXPIRE_DAYS} days ago" '+%Y-%m-%d')
+    # Note:
+    # The default max-items for 'aws s3api list-objects' is 1000.
+    # If your bucket contains more than 1000 objects, you need to handle pagination
+    # or use the --max-items option to specify a larger value, or use NextContinuationToken for full listing.
     for LOG_PATH in $(aws s3api list-objects --bucket $BUCKET_NAME | jq '.Contents[] | .Key' -r); do
         if [[ "$LOG_PATH" =~ \.[0-9]{8}\.gz$ ]]; then
             aws s3 cp "s3://$BUCKET_NAME/$LOG_PATH" "$DIRNAME/" && echo "Downloaded $LOG_PATH to $DIRNAME/"
-            aws s3 rm "s3://$BUCKET_NAME/$LOG_PATH" && echo "Deleted $LOG_PATH from S3"
+            # Delete old S3 files
+            # Source - https://stackoverflow.com/a/73101002
+            aws s3api list-objects --bucket "$BUCKET_NAME" --query \
+            "Contents[?LastModified<=\`${EXPIRE_DATE}\`][].{object: Key}" \
+            | jq -r '.[].object' \
+            | xargs -I {} aws s3 rm s3://$BUCKET_NAME/{} && \
+            echo "Deleted $LOG_PATH from S3"
         fi
     done
 }

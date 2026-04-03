@@ -37,6 +37,7 @@ file_backup_s3_transfer_user: root
 file_backup_s3_transfer_group: root
 file_backup_s3_transfer_bucket: my-backup-bucket
 file_backup_s3_transfer_aws_cli_profile: default
+file_backup_s3_expire_days: 7
 
 # AWSクレデンシャル（S3転送時はrootの~/.aws/配下に設置）
 # /root/.aws/credentials, /root/.aws/config
