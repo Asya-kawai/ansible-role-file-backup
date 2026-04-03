@@ -17,7 +17,18 @@
     - file-backup
     - file-backup-install-log-transfer-service
 
-- name: Install the override configuration for log transfer service
+
+# 同じサーバ内でバックアップとログ転送を行うケース
+# backupファイルは、file_backup_dest_dirが空の場合はバックアップ元ファイルが置かれていたディレクトリと同じところに格納される。
+# file_backup_dest_dirが空でない場合は、file_backup_dest_dirに格納される。
+# backup_xxx.shのスクリプト内で、バックアップファイルの格納先を決める際に、file_backup_dest_dirが空かどうかで条件分岐している。
+# e.g.
+#   file_backup_dest_dirが空で、バックアップ元ファイルが/var/log/auth.logの場合、転送元ファイルは/var/log/auth.log.20240101.gzになる。
+#   file_backup_dest_dirが/backupで、バックアップ元ファイルが/var/log/auth.logの場合、転送元ファイルは/backup/auth.log.20240101.gzになる。
+# source_pathは転送元ファイルが存在するディレクトリを指定する。
+# 転送先ディレクトリは "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/{{ inventory_hostname }}" になる。
+# inventory_hostnameはansibleの組み込み変数で、現在のホストの名前が入り、バックアップを取るサーバ名が入る。
+- name: Install the override configuration for log transfer service when s3 transfer is not enabled(file backup and log transfer are on the same server)
   ansible.builtin.template:
     src: "{{ file_backup_service_dir.lstrip('/') }}/logs_transfer@.service.d/override.conf.j2"
     dest: "{{ item.override_conf_path }}"
@@ -27,26 +38,84 @@
   with_items:
     - name: auditlog
       override_conf_path: "{{ file_backup_log_transfer_auditlog_override_path }}"
-      download_dir: "{{ file_backup_auditlog_dir.rstrip('/') }}"
-      source_path: "{{ file_backup_auditlog_dir.rstrip('/') }}/audit.log.*.gz"
+      source_path: >-
+        {% if file_backup_dest_dir is defined and file_backup_dest_dir != '' %}
+          "{{ file_backup_dest_dir.rstrip('/') }}/audit.log.*.gz"
+        {% else %}
+          "{{ file_backup_auditlog_dir.rstrip('/') }}/audit.log.*.gz"
+        {% endif %}
       dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/{{ inventory_hostname }}"
     - name: authlog
       override_conf_path: "{{ file_backup_log_transfer_authlog_override_path }}"
-      download_dir: "{{ file_backup_authlog_dir.rstrip('/') }}"
-      source_path: "{{ file_backup_authlog_dir.rstrip('/') }}/auth.log.*.gz"
+      source_path: >-
+        {% if file_backup_dest_dir is defined and file_backup_dest_dir != '' %}
+          "{{ file_backup_dest_dir.rstrip('/') }}/auth.log.*.gz"
+        {% else %}
+          "{{ file_backup_authlog_dir.rstrip('/') }}/auth.log.*.gz"
+        {% endif %}
       dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/{{ inventory_hostname }}"
     - name: dmesg
       override_conf_path: "{{ file_backup_log_transfer_dmesg_override_path }}"
-      download_dir: "{{ file_backup_dmesg_dir.rstrip('/') }}"
-      source_path: "{{ file_backup_dmesg_dir.rstrip('/') }}/dmesg.*.gz"
+      source_path: >-
+        {% if file_backup_dest_dir is defined and file_backup_dest_dir != '' %}
+          "{{ file_backup_dest_dir.rstrip('/') }}/dmesg.*.gz"
+        {% else %}
+          "{{ file_backup_dmesg_dir.rstrip('/') }}/dmesg.*.gz"
+        {% endif %}
       dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/{{ inventory_hostname }}"
     - name: journallog
       override_conf_path: "{{ file_backup_log_transfer_journallog_override_path }}"
-      download_dir: "{{ file_backup_journallog_dir.rstrip('/') }}"
-      source_path: "{{ file_backup_journallog_dir.rstrip('/') }}/*/system.journal.*.gz"
+      source_path: >-
+        {% if file_backup_dest_dir is defined and file_backup_dest_dir != '' %}
+          "{{ file_backup_dest_dir.rstrip('/') }}/system.journal.*.gz"
+        {% else %}
+          "{{ file_backup_journallog_dir.rstrip('/') }}/*/system.journal.*.gz"
+        {% endif %}
       dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/{{ inventory_hostname }}"
   when:
     - file_backup_log_transfer_enable
+    - file_backup_s3_transfer_enable == false
+  tags:
+    - file-backup
+    - file-backup-install-log-transfer-service
+
+# download_dirは転送先ディレクトリ（パス）と同じ階層構造になっていることを期待する。
+# 例えば、転送先ディレクトリが/backup/hostnameの場合、download_dirは/backup/hostnameになる。
+# e.g.
+# download_dir: /backup/hostname
+# source_path: /backup/hostname/auditlog.*.gz
+# 転送先ディレクトリ: /backup/hostname/
+- name: Install the override configuration for log transfer service when s3 transfer is enabled(file backup and log transfer are on different servers, s3 is used as intermediate storage)
+  ansible.builtin.template:
+    src: "{{ file_backup_service_dir.lstrip('/') }}/logs_transfer@.service.d/override.conf.j2"
+    dest: "{{ item.override_conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  with_items:
+    - name: auditlog
+      override_conf_path: "{{ file_backup_log_transfer_auditlog_override_path }}"
+      download_dir: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/"
+      source_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/*/audit.log.*.gz"
+      dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/"
+    - name: authlog
+      override_conf_path: "{{ file_backup_log_transfer_authlog_override_path }}"
+      download_dir: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/"
+      source_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/*/auth.log.*.gz"
+      dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/"
+    - name: dmesg
+      override_conf_path: "{{ file_backup_log_transfer_dmesg_override_path }}"
+      download_dir: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/"
+      source_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/*/dmesg.*.gz"
+      dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/"
+    - name: journallog
+      override_conf_path: "{{ file_backup_log_transfer_journallog_override_path }}"
+      download_dir: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/"
+      source_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/*/system.journal.*.gz"
+      dest_path: "{{ file_backup_log_transfer_dest_dir.rstrip('/') }}/"
+  when:
+    - file_backup_log_transfer_enable
+    - file_backup_s3_transfer_enable
   tags:
     - file-backup
     - file-backup-install-log-transfer-service

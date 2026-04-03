@@ -16,6 +16,11 @@ BACKUP_EXPIRE_DAYS={{ file_backup_expire_days }}
 BACKUP_USER="{{ file_backup_user }}"
 BACKUP_GROUP="{{ file_backup_group }}"
 BACKUP_DIR="{{ file_backup_dmesg_dir }}"
+# Note:
+# If file_backup_dest_dir is only '/', path concatenation like "${file_backup_dest_dir}/file_name" results in '//file_name'.
+# On Linux/UNIX, '//file_name' is interpreted as '/file_name', i.e., under the root directory.
+# Therefore, rstrip is NOT necessary for this case.
+BACKUP_DEST_DIR="{{ file_backup_dest_dir | default('') }}"
 
 YESTERDAY=$(date +%Y%m%d -d '-1day')
 
@@ -23,18 +28,20 @@ function create_dmesg_backup() {
     OUTPUT_FILE="${BACKUP_DIR}/dmesg.${YESTERDAY}"
     OUTPUT_GZ="${OUTPUT_FILE}.gz"
 
-    # Idempotency: if yesterday's file already exists, do nothing
-    {% if file_backup_dest_dir %}
-    if [ -f {{ file_backup_dest_dir.lstrip('/') }}/"$OUTPUT_GZ" ]; then
-        echo "$OUTPUT_GZ already exists. Skip."
+    # Check if backup already exists in destination
+    # If BACKUP_DEST_DIR is set, the backup file is stored in BACKUP_DEST_DIR.
+    if [ -n "$BACKUP_DEST_DIR" ]; then
+      DEST_PATH="${BACKUP_DEST_DIR}/$(basename $OUTPUT_GZ)"
+      if [ -f "$DEST_PATH" ]; then
+        echo "$DEST_PATH already exists. Skip."
         return 0
+      fi
     fi
-    {% else %}
-    if [ -f "$OUTPUT_GZ" ]; then
+    # If BACKUP_DEST_DIR is not set, the backup file is stored in the same directory as the source file.
+    if [ -z "$BACKUP_DEST_DIR" ] && [ -f "$OUTPUT_GZ" ]; then
       echo "$OUTPUT_GZ already exists. Skip."
       return 0
     fi
-    {% endif %}
 
     echo "Generating $OUTPUT_FILE ..."
 
@@ -62,11 +69,11 @@ function create_dmesg_backup() {
 
     chown "$BACKUP_USER":"$BACKUP_GROUP" "$OUTPUT_FILE"
     gzip -f "$OUTPUT_FILE"
-    {% if file_backup_dest_dir %}
-    mv "$OUTPUT_GZ" {{ file_backup_dest_dir.lstrip('/') }}/"$OUTPUT_GZ"
-    {% endif %}
+    if [ -n "$BACKUP_DEST_DIR" ]; then
+      mkdir -p "$BACKUP_DEST_DIR"
+      mv "$OUTPUT_GZ" "${BACKUP_DEST_DIR}/$(basename $OUTPUT_GZ)"
+    fi
 }
-
 
 # Delete expired files
 function delete_old_files() {

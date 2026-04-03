@@ -4,10 +4,11 @@
 # and delete old files on backup servers.
 # It is triggered by systemd.timer.
 #
-# This script accepts one argument:
-#   - Directory, file, or wildcard (e.g. /var/log/dmesg/*.gz)
-#   - If directory is specified, all files in the directory are processed
-#   - If file or wildcard is specified, those files are processed
+## This script accepts one or two arguments:
+#   1. Directory, file, or wildcard to transfer (e.g. /var/log/dmesg/*.gz)
+#      - If a directory is specified, all files in the directory are processed
+#      - If a file or wildcard is specified, only those files are processed
+#   2. (Optional) Backup destination directory. If omitted, defaults to '{{ file_backup_log_transfer_dest_dir }}/$(hostname)'
 
 set -euo pipefail
 
@@ -24,9 +25,6 @@ if [ -d "$LOCAL_PATH" ]; then
 else
     LOCAL_FILES=("$LOCAL_PATH")
 fi
-
-# Default backup directory is set to `file_backup_log_transfer_dest_dir`(ansible variable) with hostname subdirectory if not specified as an argument.
-BACKUP_DIR="${2:-{{ file_backup_log_transfer_dest_dir }}/$(hostname)}"
 
 BACKUP_EXPIRE_DAYS={{ file_backup_expire_days }}
 BACKUP_SERVERS="{{ file_backup_log_transfer_hosts }}"
@@ -81,36 +79,59 @@ function store_logs() {
     # 2. Check if file name contains date (YYYYMMDD)
     # 3. Create backup destination directory
     # 4. Transfer file to backup server
-    # 5. Delete old files on backup server
+    # 5. Delete old files on backup server and local server
     for LOCAL_FILE in ${LOCAL_FILES}; do
 
         [ -e "$LOCAL_FILE" ] || continue   # NO FILE
 
         BASENAME=$(basename "$LOCAL_FILE")
-        # Skip files that do not end with .YYYYMMDD.gz
+        # 2. Skip files that do not end with .YYYYMMDD.gz
         if ! [[ "$BASENAME" =~ \.[0-9]{8}\.gz$ ]]; then
             continue
         fi
 
-        HOSTNAME=$(hostname)
-
+        # 3. Determine destination directory
+        #
+        # If backup and transfer servers are the same, the destination includes the hostname (e.g. /backup/$(hostname)/).
+        # For S3 transfer (different servers), the hostname is extracted from LOCAL_PATH.
+        #
+        # --- Decide DEST_DIR ---
+        # 1. If the second argument is specified, always use it (highest priority)
+        # 2. If IS_S3_TRANSFER is true, extract hostname from LOCAL_PATH
+        # 3. Otherwise, use default ({{ file_backup_log_transfer_dest_dir }}/$(hostname))
+        if [ -n "${2:-}" ]; then
+            DEST_DIR="$2"
+        else
+            IS_S3_TRANSFER="${IS_S3_TRANSFER:-false}"
+            if [ "$IS_S3_TRANSFER" = "true" ] || [ "$IS_S3_TRANSFER" = "TRUE" ] || [ "$IS_S3_TRANSFER" = "1" ]; then
+                # LOCAL_PATH should be like /backup/${hostname}/xxx.log.*.gz or /backup/${hostname}/*
+                # Extract ${hostname} part (the directory name just after /backup/)
+                HOSTNAME_FROM_PATH=$(basename "$(dirname "$LOCAL_FILE")")
+                DEST_DIR="{{ file_backup_log_transfer_dest_dir }}/${HOSTNAME_FROM_PATH}"
+            else
+                # Default case: backup server and transfer server are the same, so use hostname in DEST_DIR
+                DEST_DIR="{{ file_backup_log_transfer_dest_dir }}/$(hostname)"
+            fi
+        fi
         # Create destination directory
-        make_dst_dir "$BACKUP_DIR"
+        make_dst_dir "$DEST_DIR"
 
-        # Transfer files with rsync
+        # 4. Transfer files with rsync
         # --ignore-existing: skip if same file exists on backup server
         for DST_SERVER in $BACKUP_SERVERS; do
             rsync -av \
                 --ignore-existing \
                 -e "ssh -o StrictHostKeyChecking=no -i $(get_home_dir {{ file_backup_user }})/{{ file_backup_ssh_key_file.lstrip('/') }}" \
                 "$LOCAL_FILE" \
-                ${REMOTE_USER}@${DST_SERVER}:${BACKUP_DIR}/ \
-                && echo "Transferred $LOCAL_FILE to ${DST_SERVER}:${BACKUP_DIR}/"
+                ${REMOTE_USER}@${DST_SERVER}:${DEST_DIR}/ \
+                && echo "Transferred $LOCAL_FILE to ${DST_SERVER}:${DEST_DIR}/"
         done
 
-        # Delete old logs on backup server
+        # 5. Delete old logs on backup server
         ORIGINAL_FILE_PREFIX=$(echo "$BASENAME" | cut -d '.' -f 1)
-        delete_old_files "$BACKUP_DIR" "${ORIGINAL_FILE_PREFIX}.*"
+        delete_old_files "${DEST_DIR}" "${ORIGINAL_FILE_PREFIX}.*"
+        # 5. Delete old logs on local server
+        find "$(dirname "$LOCAL_FILE")" -name "${ORIGINAL_FILE_PREFIX}.*" -ctime +$BACKUP_EXPIRE_DAYS -delete
     done
 }
 
